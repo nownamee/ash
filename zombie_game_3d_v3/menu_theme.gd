@@ -2,6 +2,7 @@ extends RefCounted
 # Тема меню: темне дерево, золоті рамки, пергаментний текст (стиль середньовічної таверни).
 
 const GameFonts = preload("res://game_fonts.gd")
+const OrnateFrame = preload("res://ornate_frame.gd")
 
 const GOLD := Color(0.95, 0.78, 0.25)
 const CREAM := Color(0.93, 0.87, 0.72)
@@ -92,7 +93,7 @@ static func build() -> Theme:
     bn.content_margin_top = 8.0
     bn.content_margin_bottom = 8.0
     bn.shadow_size = 6
-    th.set_stylebox("panel", "Banner", bn)
+    th.set_stylebox("panel", "Banner", OrnateFrame.ribbon())
     th.set_type_variation("TitleLabel", "Label")
     th.set_font("font", "TitleLabel", tf)
     # зловісний напис: назви локацій, загроза
@@ -113,9 +114,15 @@ static func build() -> Theme:
     th.set_constant("separation", "HSeparator", 8)
 
     # панелі
-    th.set_stylebox("panel", "PanelContainer", _box(Color(0.08, 0.05, 0.03, 0.93), Color(0.55, 0.38, 0.12), 3, 6))
+    th.set_stylebox("panel", "PanelContainer", OrnateFrame.panel())
     th.set_type_variation("Plate", "PanelContainer")
-    th.set_stylebox("panel", "Plate", _box(Color(0.11, 0.065, 0.035, 0.94), Color(0.90, 0.70, 0.18), 2, 8))
+    th.set_stylebox("panel", "Plate", OrnateFrame.plate())
+    th.set_stylebox("panel", "Panel", OrnateFrame.panel())
+    th.set_stylebox("panel", "PopupPanel", OrnateFrame.panel())
+    th.set_stylebox("panel", "TooltipPanel", OrnateFrame.panel())
+    th.set_stylebox("panel", "AcceptDialog", OrnateFrame.panel())
+    th.set_font("font", "TooltipLabel", GameFonts.body())
+    th.set_font_size("font_size", "TooltipLabel", 18)
 
     th.set_color("font_color", "Label", CREAM)
     th.set_color("font_outline_color", "Label", Color(0, 0, 0, 0.9))

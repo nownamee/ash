@@ -221,7 +221,7 @@ func _kind_label() -> String:
         "nest":
             return "ГНІЗДО"
         _:
-            return "ЯДРО"
+            return "СЕРЦЕ"
 
 func _material(tint: Color, roughness: float = 0.7, emission: float = 0.0) -> StandardMaterial3D:
     var mat := StandardMaterial3D.new()
