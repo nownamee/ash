@@ -20,6 +20,9 @@ signal hurt
 const BASE_SPEED := 7.2
 const SWING_TIME := 0.18
 const DASH_SPEED := 30.0          # м/с під час ривку (3 м ≈ 0.1 с, 10 м ≈ 0.33 с)
+const ACCEL_TIME := 0.09          # с до повної швидкості
+const DECEL_TIME := 0.05          # с до зупинки (різкіше, ніж розгін)
+const TURN_BOOST := 1.6           # розворот проти руху гальмується швидше
 const DASH_HALF_WIDTH := 0.9      # на скільки метрів убік від лінії ривка зачіпаються вороги
 
 var max_hp := 100
@@ -36,6 +39,7 @@ var slow_time := 0.0
 var dead := false
 var camera: Camera3D
 var walk_t := 0.0
+var move_vel := Vector3.ZERO   # згладжена швидкість ходьби (інерція)
 
 # стан удару клинком (ніж / кинджал / меч / двуручний меч / списи / булава / молоти, див. Weapons.BLADE)
 var blade_active := false
@@ -202,7 +206,12 @@ func _physics_process(delta: float) -> void:
     if blade_active:
         spd *= float(blade_cfg.get("move_mult", 1.0))
     var d2 := Input.get_vector("move_left", "move_right", "move_up", "move_down")
-    velocity = Vector3(d2.x, 0.0, d2.y) * spd
+    var want := Vector3(d2.x, 0.0, d2.y) * spd
+    var rate := spd / (ACCEL_TIME if want != Vector3.ZERO else DECEL_TIME)
+    if want != Vector3.ZERO and move_vel.dot(want) < 0.0:
+        rate *= TURN_BOOST
+    move_vel = move_vel.move_toward(want, rate * delta)
+    velocity = move_vel
     if blade_active and not blade_struck and blade_clock >= float(blade_cfg["t0"]) * blade_dur:
         velocity += aim * float(blade_cfg.get("lunge", 0.0))   # випад / крок уперед разом з ударом
     var expected := 0.0
@@ -217,6 +226,14 @@ func _physics_process(delta: float) -> void:
     move_and_slide()
     if dash_active:
         _dash_step(prev_pos, expected, delta)
+        move_vel = Vector3.ZERO
+    elif jump_active:
+        move_vel = Vector3.ZERO
+    elif move_vel != Vector3.ZERO:
+        # зіткнення з перешкодою гасить складову швидкості в стіну, щоб не «липнути» й плавно ковзати
+        var rv := get_real_velocity()
+        if rv.length_squared() < move_vel.length_squared():
+            move_vel = move_vel.move_toward(Vector3(rv.x, 0.0, rv.z), spd * 20.0 * delta)
 
     _update_aim()
 
