@@ -20,12 +20,28 @@ const GOLD := Color(0.95, 0.78, 0.25)
 const INK := Color(0.05, 0.03, 0.02)
 const PARCH := Color(0.62, 0.57, 0.44)
 
-# «Світ» карти в умовних одиницях. Старі координати лишаються в незмінному масштабі,
-# а EXTRA_LEFT і EXTRA_TOP дають простір для нових кампаній навколо старого регіону.
-const MAP_SPAN := Vector2(1000.0, 1000.0)
-const EXTRA_LEFT := 300.0
-const EXTRA_TOP := 360.0
-const WORLD := Vector2(1600.0, 2160.0)
+# «Світ» карти в умовних одиницях. Локації розставлені не за старими координатами з locations.gd, а
+# звивистою дорогою знизу вгору (layout_centers): спершу головний шлях змійкою, над ним — чотири
+# кампанії окремими «провінціями», кожна в один ряд зі своїм гербовим прапором ліворуч.
+const WORLD := Vector2(1600.0, 2440.0)
+const ROW_BOTTOM := 2270.0     # висота першого (нижнього) ряду
+const ROW_GAP := 265.0         # відстань між рядами
+const TRUNK_X := 58.0          # «стовбур» дороги від Палаючої трясовини до всіх кампаній
+const MAIN_ORDER := ["loc1", "loc2", "loc3", "loc4", "loc13", "loc5", "loc6", "loc7", "loc10", "loc8", "loc9",
+    "loc11", "loc12", "loc14", "loc15", "loc16", "loc17", "loc18", "loc19", "loc20", "loc21", "loc22", "loc23",
+    "loc24", "loc25", "loc26", "loc27"]
+const MAIN_ROWS := [6, 6, 5, 5, 5]
+const CAMPAIGNS := ["tide", "bells", "glass", "iron"]
+const CAMPAIGN_TITLES := {"tide": "Чорний приплив", "bells": "Хор порожніх дзвонів", "glass": "Скляна ніч", "iron": "Залізний мор"}
+const CAMPAIGN_COLORS := {"tide": Color(0.30, 0.72, 0.74), "bells": Color(0.86, 0.66, 0.32), "glass": Color(0.68, 0.52, 0.92), "iron": Color(0.86, 0.45, 0.22)}
+const CAMPAIGN_X := Vector2(540.0, 1480.0)
+# Обрис кордону району за головним біомом: 0 — м'які пагорби, 1 — дюни, 2 — скелі, 3 — гострі шпилі,
+# 4 — зубчасті мури, 5 — хвилі прибою.
+const EDGE_STYLE := [0, 0, 1, 2, 4, 4, 4, 3, 0, 2, 3, 5, 4, 3, 4]
+# Пам'ятні місця, які видно на карті поверх малюнків біому.
+const LANDMARKS := {"loc1": "village", "loc10": "castle", "loc12": "castle", "loc17": "castle", "loc20": "castle",
+    "loc21": "volcano", "loc22": "volcano", "loc23": "volcano", "loc29": "ship", "loc31": "lighthouse",
+    "loc32": "cathedral", "loc37": "cathedral", "loc42": "mirror", "loc47": "machine"}
 # Поля навколо карти під рамку (чим більші — тим менша видима карта).
 const MARGIN_L := 58.0
 const MARGIN_R := 58.0
@@ -95,8 +111,12 @@ var _press_btn: int = 0
 var _press_pos := Vector2.ZERO
 var _last_pos := Vector2.ZERO
 
-var _cells: Array = []      # багатокутник кожного району (координати світу)
-var _rings: Array = []      # внутрішні «кільця» для об'ємного затінення районів
+var _cells: Array = []      # район для кліку: повна клітинка без проміжків (координати світу)
+var _shapes: Array = []     # видимий обрис району: з ущелинами між районами й власною формою кордону
+var _meshes: Array = []     # заливка району з плавним переходом від світлого центру до темного краю
+var _label_up: Array = []   # назва над значком (true) чи під ним — сусіди в ряду чергуються
+var _banners: Array = []    # [кампанія, точка прапора]
+var _grain: Texture2D
 var _centers: Array = []    # позиція значка локації (координати світу)
 var _doodles: Array = []
 var _specks: Array = []
@@ -135,6 +155,7 @@ func _ready() -> void:
     terrain.size = WORLD
     terrain.mouse_filter = Control.MOUSE_FILTER_IGNORE
     terrain.draw.connect(_draw_terrain)
+    terrain.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
     view.add_child(terrain)
 
     markers = Control.new()
@@ -194,7 +215,7 @@ func _zoom_button(txt: String) -> Button:
     b.custom_minimum_size = Vector2(30, 30)
     b.size = Vector2(30, 30)
     b.add_theme_font_size_override("font_size", 20)
-    b.tooltip_text = "Колесо миші — масштаб"
+    b.tooltip_text = "Коліщатко миші наближає й віддаляє мапу"
     add_child(b)
     return b
 
@@ -212,6 +233,8 @@ func _on_resized() -> void:
         zoom = min_zoom
         zoom_target = min_zoom
         offset = (view.size - WORLD * zoom) * 0.5
+        # на старті показуємо «фронт»: першу ще не відвойовану локацію
+        offset.y = view.size.y * 0.5 - _frontier().y * zoom
     else:
         zoom = clampf(zoom, min_zoom, max_zoom)
         zoom_target = clampf(zoom_target, min_zoom, max_zoom)
@@ -270,30 +293,189 @@ func _clip_half(poly: PackedVector2Array, a: Vector2, b: Vector2) -> PackedVecto
             out.append(p.lerp(q, dp / (dp - dq)))
     return out
 
-func _warp(p: Vector2) -> Vector2:
-    var e := 0.6
-    if p.x < e or p.x > WORLD.x - e or p.y < e or p.y > WORLD.y - e:
-        return p
-    return p + Vector2(sin(p.y * 0.045 + 1.3) + 0.7 * sin(p.y * 0.13 + p.x * 0.05), cos(p.x * 0.05 + 0.7) + 0.7 * sin(p.x * 0.11 - p.y * 0.04)) * 6.0
+static func _jitter(i: int) -> Vector2:
+    return Vector2(sin(float(i) * 2.13 + 0.4) * 42.0, cos(float(i) * 1.37 + 1.1) * 13.0)
 
-func _refine(poly: PackedVector2Array) -> PackedVector2Array:
+# Центри всіх локацій: id -> позиція у світі карти. Статична, щоб її могли перевірити тести.
+static func layout_centers() -> Dictionary:
+    var out := {}
+    var idx := 0
+    for r in range(MAIN_ROWS.size()):
+        var n: int = MAIN_ROWS[r]
+        var y := ROW_BOTTOM - ROW_GAP * float(r)
+        var x0 := 190.0 if n == 6 else 250.0
+        var x1 := 1420.0 if n == 6 else 1370.0
+        for k in range(n):
+            var u := float(k) / float(n - 1)
+            if r % 2 == 0:
+                u = 1.0 - u        # змійка: парні ряди йдуть справа наліво
+            out[String(MAIN_ORDER[idx])] = Vector2(lerpf(x0, x1, u), y) + _jitter(idx)
+            idx += 1
+    for ci in range(CAMPAIGNS.size()):
+        var y2 := campaign_row_y(ci)
+        for loc in Locations.DATA:
+            if String(loc.get("campaign", "")) != CAMPAIGNS[ci]:
+                continue
+            var st := int(loc.get("stage", 1))
+            var x := lerpf(CAMPAIGN_X.x, CAMPAIGN_X.y, float(st - 1) / 4.0)
+            out[String(loc["id"])] = Vector2(x, y2) + _jitter(40 + ci * 5 + st) * 0.8
+    # локації, яких немає в жодному списку (на майбутнє), стають угорі праворуч
+    var spare := 0
+    for loc in Locations.DATA:
+        if not out.has(String(loc["id"])):
+            out[String(loc["id"])] = Vector2(WORLD.x - 120.0, 90.0 + 90.0 * float(spare))
+            spare += 1
+    return out
+
+static func campaign_row_y(ci: int) -> float:
+    return ROW_BOTTOM - ROW_GAP * float(MAIN_ROWS.size() + ci)
+
+# Порядок проходження: головний шлях, далі кампанії етап за етапом.
+static func route_order() -> Array:
+    var ids: Array = MAIN_ORDER.duplicate()
+    for camp in CAMPAIGNS:
+        for st in range(1, 6):
+            for loc in Locations.DATA:
+                if String(loc.get("campaign", "")) == camp and int(loc.get("stage", 0)) == st:
+                    ids.append(String(loc["id"]))
+    return ids
+
+func _frontier() -> Vector2:
+    var lay := layout_centers()
+    for idf in route_order():
+        if not GameState.conquered.has(String(idf)) and lay.has(String(idf)):
+            return lay[String(idf)]
+    return Vector2(WORLD.x * 0.5, campaign_row_y(CAMPAIGNS.size() - 1))
+
+func _chaikin(poly: PackedVector2Array) -> PackedVector2Array:
     var out := PackedVector2Array()
     var n := poly.size()
     for i in range(n):
         var a := poly[i]
         var b := poly[(i + 1) % n]
-        var steps := maxi(1, int(a.distance_to(b) / 12.0))
-        for s in range(steps):
-            var w := _warp(a.lerp(b, float(s) / float(steps)))
-            if out.size() == 0 or out[out.size() - 1].distance_to(w) > 0.01:
-                out.append(w)
+        out.append(a.lerp(b, 0.25))
+        out.append(a.lerp(b, 0.75))
     return out
 
+# Видимий обрис району: клітинку трохи стискаємо (між районами лишаються темні ущелини),
+# дрібнимо й відсуваємо точки від центру за «характером» біому.
+func _shape_for(cell: PackedVector2Array, center: Vector2, style: int, seed_v: int) -> PackedVector2Array:
+    var inset: Array = Geometry2D.offset_polygon(cell, -12.0, Geometry2D.JOIN_ROUND)
+    var base := cell
+    var best := -1.0
+    for q in inset:
+        var qp: PackedVector2Array = q
+        if qp.size() < 3:
+            continue
+        var bb := Rect2(qp[0], Vector2.ZERO)
+        for v in qp:
+            bb = bb.expand(v)
+        if bb.get_area() > best:
+            best = bb.get_area()
+            base = qp
+    var pts := PackedVector2Array()
+    var arc := PackedFloat32Array()
+    var acc := 0.0
+    var n := base.size()
+    for i in range(n):
+        var a := base[i]
+        var b := base[(i + 1) % n]
+        var len_ab := a.distance_to(b)
+        var steps := maxi(1, int(len_ab / 7.0))
+        for st in range(steps):
+            pts.append(a.lerp(b, float(st) / float(steps)))
+            arc.append(acc + len_ab * float(st) / float(steps))
+        acc += len_ab
+    var rng := RandomNumberGenerator.new()
+    rng.seed = seed_v
+    var ph := rng.randf() * TAU
+    var out := PackedVector2Array()
+    var crag := 0.0
+    for i in range(pts.size()):
+        var p := pts[i]
+        var sv := arc[i]
+        var off := 0.0
+        match style:
+            0:
+                off = 5.5 * sin(sv / 34.0 + ph) + 3.0 * sin(sv / 13.0 + ph * 2.0)
+            1:
+                off = 6.0 * sin(sv / 19.0 + ph) * (0.6 + 0.4 * sin(sv / 70.0))
+            2:
+                crag = lerpf(crag, rng.randf_range(-9.0, 8.0), 0.65)
+                off = crag
+            3:
+                var tooth := fmod(sv + ph * 10.0, 26.0) / 26.0
+                off = -5.0 + 15.0 * pow(1.0 - absf(tooth * 2.0 - 1.0), 2.2)
+            4:
+                off = 5.0 if int(floor((sv + ph * 10.0) / 17.0)) % 2 == 0 else -3.0
+            5:
+                off = 7.0 * sin(sv / 22.0 + ph) + 2.5 * sin(sv / 7.0)
+        out.append(p + (p - center).normalized() * off)
+    if style in [0, 1, 5]:
+        out = _chaikin(_chaikin(out))
+    return out
+
+# Заливка району віялом трикутників: центр світлий, край темніший, а текстура дає зернистий рельєф.
+func _fan_mesh(shape: PackedVector2Array, center: Vector2) -> ArrayMesh:
+    var verts := PackedVector2Array()
+    var cols := PackedColorArray()
+    var uvs := PackedVector2Array()
+    var mid := Color(1.0, 1.0, 1.0)
+    var rim := Color(0.60, 0.58, 0.56)
+    var n := shape.size()
+    for i in range(n):
+        var a := shape[i]
+        var b := shape[(i + 1) % n]
+        verts.append(center)
+        verts.append(a)
+        verts.append(b)
+        uvs.append(center / 260.0)
+        uvs.append(a / 260.0)
+        uvs.append(b / 260.0)
+        cols.append(mid)
+        cols.append(rim)
+        cols.append(rim)
+    var arr := []
+    arr.resize(Mesh.ARRAY_MAX)
+    arr[Mesh.ARRAY_VERTEX] = verts
+    arr[Mesh.ARRAY_COLOR] = cols
+    arr[Mesh.ARRAY_TEX_UV] = uvs
+    var m := ArrayMesh.new()
+    m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+    return m
+
+func _make_grain() -> Texture2D:
+    var nz := FastNoiseLite.new()
+    nz.seed = 77
+    nz.frequency = 0.035
+    nz.fractal_octaves = 4
+    var img := nz.get_seamless_image(256, 256)
+    img.convert(Image.FORMAT_RGBA8)
+    for y in range(img.get_height()):
+        for x in range(img.get_width()):
+            var v := img.get_pixel(x, y).r
+            var g := 0.80 + 0.28 * v
+            img.set_pixel(x, y, Color(g, g, g * 0.97, 1.0))
+    return ImageTexture.create_from_image(img)
+
+func _road_curve(pts: Array) -> PackedVector2Array:
+    var poly := PackedVector2Array(pts)
+    for k in range(3):
+        var sm := PackedVector2Array()
+        sm.append(poly[0])
+        for i in range(poly.size() - 1):
+            sm.append(poly[i].lerp(poly[i + 1], 0.25))
+            sm.append(poly[i].lerp(poly[i + 1], 0.75))
+        sm.append(poly[poly.size() - 1])
+        poly = sm
+    return poly
+
 func _build_geometry() -> void:
+    _grain = _make_grain()
+    var layout := layout_centers()
     _centers = []
     for loc in Locations.DATA:
-        var v: Vector2 = loc["pos"]
-        _centers.append(v * MAP_SPAN + Vector2(EXTRA_LEFT, EXTRA_TOP))
+        _centers.append(layout[String(loc["id"])])
     _cells = []
     var rect_poly := PackedVector2Array([Vector2.ZERO, Vector2(WORLD.x, 0.0), WORLD, Vector2(0.0, WORLD.y)])
     for i in range(_centers.size()):
@@ -301,50 +483,59 @@ func _build_geometry() -> void:
         for j in range(_centers.size()):
             if j != i:
                 poly = _clip_half(poly, _centers[i], _centers[j])
-        _cells.append(_refine(poly))
+        _cells.append(poly)
 
-    # внутрішні кільця: райони виглядають «випуклими», краї темніші, середина світліша
-    _rings = []
-    var deltas := [10.0, 22.0, 38.0]
+    _shapes = []
+    _meshes = []
     for i in range(_cells.size()):
-        var rings: Array = []
-        var cell: PackedVector2Array = _cells[i]
-        if cell.size() >= 3:
-            for k in range(deltas.size()):
-                var d: float = deltas[k]
-                var res: Array = Geometry2D.offset_polygon(cell, -d, Geometry2D.JOIN_ROUND)
-                for rp in res:
-                    var rpp: PackedVector2Array = rp
-                    if rpp.size() >= 3:
-                        rings.append(rpp)
-        _rings.append(rings)
+        var loc0: Dictionary = Locations.DATA[i]
+        var style := int(EDGE_STYLE[clampi(int(loc0["biome"]), 0, EDGE_STYLE.size() - 1)])
+        var shp := _shape_for(_cells[i], _centers[i], style, hash(String(loc0["id"])))
+        _shapes.append(shp)
+        _meshes.append(_fan_mesh(shp, _centers[i]))
+
+    # назви: сусіди в одному ряду чергуються над/під значком, щоб написи не налазили один на одного
+    _label_up = []
+    _label_up.resize(_centers.size())
+    var rows := {}
+    for i in range(_centers.size()):
+        var c0: Vector2 = _centers[i]
+        var row_key := int(round((ROW_BOTTOM - c0.y) / ROW_GAP))
+        if not rows.has(row_key):
+            rows[row_key] = []
+        rows[row_key].append(i)
+    for row_key in rows:
+        var members: Array = rows[row_key]
+        members.sort_custom(func(x, y): return _centers[x].x < _centers[y].x)
+        for rank in range(members.size()):
+            _label_up[members[rank]] = rank % 2 == 1
+
+    _banners = []
+    for ci in range(CAMPAIGNS.size()):
+        _banners.append([CAMPAIGNS[ci], Vector2(265.0, campaign_row_y(ci))])
 
     # малюнки й дрібні деталі в районах
     var rng := RandomNumberGenerator.new()
     _doodles = []
     _specks = []
-    for i in range(_cells.size()):
+    for i in range(_shapes.size()):
         var loc: Dictionary = Locations.DATA[i]
         rng.seed = hash(String(loc["id"]))
-        var poly2: PackedVector2Array = _cells[i]
+        var poly2: PackedVector2Array = _shapes[i]
         var items: Array = []
         var specks: Array = []
-        if poly2.size() < 3:
-            _doodles.append(items)
-            _specks.append(specks)
-            continue
         var bb := Rect2(poly2[0], Vector2.ZERO)
         for p in poly2:
             bb = bb.expand(p)
-        var want := clampi(int(bb.size.x * bb.size.y / 1100.0), 5, 30)
+        var want := clampi(int(bb.size.x * bb.size.y / 1500.0), 6, 34)
         var tries := 0
-        while items.size() < want and tries < 300:
+        while items.size() < want and tries < 400:
             tries += 1
             var pt := Vector2(rng.randf_range(bb.position.x, bb.end.x), rng.randf_range(bb.position.y, bb.end.y))
-            if pt.distance_to(_centers[i]) < 52.0:
+            if pt.distance_to(_centers[i]) < 58.0:
                 continue
             var ok := true
-            for off in [Vector2(12, 0), Vector2(-12, 0), Vector2(0, 12), Vector2(0, -12)]:
+            for off in [Vector2(16, 0), Vector2(-16, 0), Vector2(0, 16), Vector2(0, -16)]:
                 if not Geometry2D.is_point_in_polygon(pt + off, poly2):
                     ok = false
                     break
@@ -352,7 +543,7 @@ func _build_geometry() -> void:
                 continue
             for it in items:
                 var q: Vector2 = it[1]
-                if q.distance_to(pt) < 30.0:
+                if q.distance_to(pt) < 32.0:
                     ok = false
                     break
             if not ok:
@@ -360,13 +551,13 @@ func _build_geometry() -> void:
             var kind := int(loc["biome"])
             if int(loc["second"]) >= 0 and rng.randf() < 0.3:
                 kind = int(loc["second"])
-            items.append([kind, pt, rng.randf_range(1.15, 1.6), rng.randf_range(-0.5, 0.5), int(rng.randi() % 3)])
+            items.append([kind, pt, rng.randf_range(1.3, 1.85), rng.randf_range(-0.5, 0.5), int(rng.randi() % 3)])
         items.sort_custom(func(x, y): return x[1].y < y[1].y)
         _doodles.append(items)
 
-        var want_s := clampi(int(bb.size.x * bb.size.y / 650.0), 24, 80)
+        var want_s := clampi(int(bb.size.x * bb.size.y / 700.0), 24, 90)
         var tries2 := 0
-        while specks.size() < want_s and tries2 < 400:
+        while specks.size() < want_s and tries2 < 500:
             tries2 += 1
             var pt2 := Vector2(rng.randf_range(bb.position.x, bb.end.x), rng.randf_range(bb.position.y, bb.end.y))
             if not Geometry2D.is_point_in_polygon(pt2, poly2):
@@ -377,29 +568,28 @@ func _build_geometry() -> void:
             specks.append([kind2, pt2, rng.randf_range(0.9, 1.4), int(rng.randi() % 4)])
         _specks.append(specks)
 
-    # стежки між пов'язаними локаціями
+    # дороги: за умовами відкриття (req). Перші етапи кампаній з'єднує «стовбур» уздовж лівого краю.
     _roads = []
+    var index := {}
+    for k in range(Locations.DATA.size()):
+        index[String(Locations.DATA[k]["id"])] = k
     for i in range(Locations.DATA.size()):
         var loc3: Dictionary = Locations.DATA[i]
         for rid in loc3["req"]:
-            var j := -1
-            for k in range(Locations.DATA.size()):
-                if String(Locations.DATA[k]["id"]) == String(rid):
-                    j = k
-            if j < 0:
+            if not index.has(String(rid)):
                 continue
-            rng.seed = hash(String(loc3["id"]) + String(rid))
+            var j: int = index[String(rid)]
             var p0: Vector2 = _centers[j]
             var p2: Vector2 = _centers[i]
-            var dir := (p2 - p0)
-            var perp := Vector2(-dir.y, dir.x).normalized()
-            var ctrl := (p0 + p2) * 0.5 + perp * rng.randf_range(-45.0, 45.0)
-            var pts := PackedVector2Array()
-            var steps := 24
-            for s in range(steps + 1):
-                var u := float(s) / float(steps)
-                pts.append(p0 * (1.0 - u) * (1.0 - u) + ctrl * 2.0 * u * (1.0 - u) + p2 * u * u)
-            _roads.append([i, j, pts])
+            var pts: Array = []
+            if loc3.has("campaign") and int(loc3.get("stage", 1)) == 1:
+                pts = [p0, Vector2(TRUNK_X + 20.0, p0.y - 30.0), Vector2(TRUNK_X, p0.y - 90.0), Vector2(TRUNK_X, p2.y + 40.0), Vector2(TRUNK_X + 60.0, p2.y + 8.0), p2]
+            else:
+                rng.seed = hash(String(loc3["id"]) + String(rid))
+                var dir := p2 - p0
+                var perp := Vector2(-dir.y, dir.x).normalized()
+                pts = [p0, (p0 + p2) * 0.5 + perp * rng.randf_range(-28.0, 28.0), p2]
+            _roads.append([i, j, _road_curve(pts)])
 
 func _id_at(wpos: Vector2) -> String:
     for i in range(_cells.size()):
@@ -1034,61 +1224,137 @@ func _speck(c: Control, kind: int, p: Vector2, s: float, v: int, a: float) -> vo
 
 func _fill_color(loc: Dictionary) -> Color:
     var base: Color = Biomes.DATA[int(loc["biome"])]["map"]
-    var col := PARCH.lerp(base, 0.30)
-    if GameState.conquered.has(String(loc["id"])):
-        col = col.lerp(Color(0.35, 0.60, 0.30), 0.22)
-    elif not GameState.is_unlocked(loc):
-        col = col.lerp(Color(0.20, 0.19, 0.19), 0.62)
+    var col := PARCH.lerp(base, 0.62)
+    if int(loc["second"]) >= 0:
+        col = col.lerp(Biomes.DATA[int(loc["second"])]["map"], 0.12)
+    if not GameState.is_unlocked(loc):
+        col = col.lerp(Color(0.24, 0.23, 0.24), 0.58).darkened(0.12)
     return col
+
+func _closed(poly: PackedVector2Array) -> PackedVector2Array:
+    var e := poly.duplicate()
+    if e.size() > 0:
+        e.append(e[0])
+    return e
 
 func _draw_terrain() -> void:
     var c := terrain
-    # землі районів: темніший край + світліші кільця всередині
-    for i in range(_cells.size()):
-        var loc: Dictionary = Locations.DATA[i]
-        var unlocked := GameState.is_unlocked(loc)
-        var base := _fill_color(loc)
-        var edge_col := base.darkened(0.16)
-        edge_col.a = 0.66 if unlocked else 0.82
-        if _cells[i].size() >= 3:
-            c.draw_colored_polygon(_cells[i], edge_col)
-        var light := base.lightened(0.14)
-        light.a = 0.11 if unlocked else 0.06
-        for r in _rings[i]:
-            c.draw_colored_polygon(r, light)
-    # дрібні деталі землі, потім великі малюнки (за вертикаллю, щоб нижні перекривали верхні)
-    for i in range(_cells.size()):
+    # ущелини між районами: темна земля, крізь яку ледь проступає пергамент
+    c.draw_rect(Rect2(Vector2.ZERO, WORLD), Color(0.085, 0.06, 0.045, 0.80))
+    # тіні: райони ніби трохи підняті над ущелинами
+    for i in range(_meshes.size()):
+        c.draw_mesh(_meshes[i], null, Transform2D(0.0, Vector2(7.0, 10.0)), Color(0, 0, 0, 0.55))
+    # земля району з плавним світлом від центру й зернистою текстурою
+    for i in range(_meshes.size()):
+        c.draw_mesh(_meshes[i], _grain, Transform2D.IDENTITY, _fill_color(Locations.DATA[i]))
+    for i in range(_specks.size()):
         var unl := GameState.is_unlocked(Locations.DATA[i])
-        var a := 0.95 if unl else 0.45
+        var a := 0.95 if unl else 0.40
         for sp in _specks[i]:
             _speck(c, int(sp[0]), sp[1], float(sp[2]), int(sp[3]), a)
-    for i in range(_cells.size()):
-        var unl2 := GameState.is_unlocked(Locations.DATA[i])
-        var a2 := 0.95 if unl2 else 0.45
-        for it in _doodles[i]:
-            _doodle(c, int(it[0]), it[1], float(it[2]), float(it[3]), a2, int(it[4]))
-    # стежки
+    # дороги лежать на землі, під малюнками
     for r in _roads:
         var i1: int = r[0]
         var j1: int = r[1]
         var pts: PackedVector2Array = r[2]
         var open1 := GameState.is_unlocked(Locations.DATA[i1])
         var done_prev := GameState.conquered.has(String(Locations.DATA[j1]["id"]))
-        var col := Color(0.62, 0.50, 0.30, 0.9)
+        var done_both := done_prev and GameState.conquered.has(String(Locations.DATA[i1]["id"]))
+        var col := Color(0.80, 0.66, 0.42)
         if not open1:
-            col = Color(0.35, 0.33, 0.30, 0.6)
-        elif done_prev:
-            col = Color(0.75, 0.12, 0.10, 0.95)
-        c.draw_polyline(pts, Color(0, 0, 0, 0.28), 5.0)
-        for k in range(0, pts.size() - 1, 2):
-            c.draw_line(pts[k], pts[k + 1], col, 2.4)
-    # межі районів
-    for i in range(_cells.size()):
-        var edge: PackedVector2Array = _cells[i].duplicate()
-        if edge.size() < 3:
-            continue
-        edge.append(edge[0])
-        c.draw_polyline(edge, INK, 2.6)
+            col = Color(0.38, 0.35, 0.32)
+        elif done_both:
+            col = Color(0.66, 0.10, 0.07)
+        c.draw_polyline(pts, Color(0, 0, 0, 0.30), 11.0, true)
+        c.draw_polyline(pts, Color(0.10, 0.06, 0.03, 0.95), 7.0, true)
+        c.draw_polyline(pts, col, 4.2, true)
+        if not open1:
+            for k in range(0, pts.size() - 1, 3):
+                c.draw_line(pts[k], pts[k + 1], Color(0.10, 0.06, 0.03, 0.9), 4.6)
+        else:
+            c.draw_polyline(pts, col.lightened(0.35) * Color(1, 1, 1, 0.35), 1.2, true)
+    for i in range(_doodles.size()):
+        var unl2 := GameState.is_unlocked(Locations.DATA[i])
+        var a2 := 0.95 if unl2 else 0.42
+        for it in _doodles[i]:
+            _doodle(c, int(it[0]), it[1], float(it[2]), float(it[3]), a2, int(it[4]))
+        var lid := String(Locations.DATA[i]["id"])
+        if LANDMARKS.has(lid):
+            var side := 1.0 if _label_up[i] else -1.0
+            _landmark(c, String(LANDMARKS[lid]), _centers[i] + Vector2(0.0, 74.0 * side), 2.0, a2)
+    # кордони: темний урвище-край, світла кромка всередині
+    for i in range(_shapes.size()):
+        var shp: PackedVector2Array = _shapes[i]
+        var unl3 := GameState.is_unlocked(Locations.DATA[i])
+        c.draw_polyline(_closed(shp), Color(0.04, 0.025, 0.015, 0.95), 2.6, true)
+        var rim: Color = _fill_color(Locations.DATA[i]).lightened(0.45)
+        rim.a = 0.38 if unl3 else 0.14
+        for q in Geometry2D.offset_polygon(shp, -4.0, Geometry2D.JOIN_ROUND):
+            var qp: PackedVector2Array = q
+            if qp.size() >= 3:
+                c.draw_polyline(_closed(qp), rim, 1.6, true)
+    # туман над закритими землями
+    for i in range(_meshes.size()):
+        if not GameState.is_unlocked(Locations.DATA[i]):
+            c.draw_mesh(_meshes[i], _grain, Transform2D.IDENTITY, Color(0.16, 0.15, 0.17, 0.38))
+
+# ================= Пам'ятні місця (великі малюнки поверх району) =================
+func _landmark(c: Control, kind: String, p: Vector2, s: float, a: float) -> void:
+    _ell(c, p + Vector2(4.0, 9.0) * s, 15.0 * s, 6.0 * s, Color(0, 0, 0, 0.35 * a))
+    match kind:
+        "village":
+            _village(c, p, s * 1.2, 0.15, a, 0)
+        "castle":
+            var stone := _ca(Color(0.55, 0.52, 0.48), a)
+            var dark := _ca(Color(0.30, 0.28, 0.27), a)
+            c.draw_rect(Rect2(p + Vector2(-13, -4) * s, Vector2(26, 11) * s), stone)
+            for k in range(6):
+                c.draw_rect(Rect2(p + Vector2(-13.0 + 4.6 * float(k), -6.5) * s, Vector2(2.6, 2.6) * s), stone)
+            for tx in [-14.0, 0.0, 14.0]:
+                var top := p + Vector2(tx, -9.0) * s
+                c.draw_rect(Rect2(top + Vector2(-3.4, 0) * s, Vector2(6.8, 16) * s), stone.darkened(0.08))
+                c.draw_colored_polygon(PackedVector2Array([top + Vector2(-4.4, 0) * s, top + Vector2(0, -9) * s, top + Vector2(4.4, 0) * s]), _ca(Color(0.42, 0.10, 0.08), a))
+            c.draw_rect(Rect2(p + Vector2(-2.5, 1.5) * s, Vector2(5, 5.5) * s), dark)
+            c.draw_line(p + Vector2(0, -18) * s, p + Vector2(0, -25) * s, _ca(INK, a), 1.0 * s)
+            c.draw_colored_polygon(PackedVector2Array([p + Vector2(0, -25) * s, p + Vector2(6, -23) * s, p + Vector2(0, -21) * s]), _ca(Color(0.85, 0.12, 0.08), a))
+        "volcano":
+            c.draw_colored_polygon(PackedVector2Array([p + Vector2(-17, 8) * s, p + Vector2(-4, -11) * s, p + Vector2(4, -11) * s, p + Vector2(17, 8) * s]), _ca(Color(0.20, 0.12, 0.09), a))
+            c.draw_colored_polygon(PackedVector2Array([p + Vector2(-4, -11) * s, p + Vector2(4, -11) * s, p + Vector2(2, -8) * s, p + Vector2(-2, -8) * s]), _ca(Color(1.0, 0.55, 0.10), a))
+            c.draw_polyline(PackedVector2Array([p + Vector2(-1, -9) * s, p + Vector2(-4, -3) * s, p + Vector2(-2, 2) * s, p + Vector2(-7, 7) * s]), _ca(Color(1.0, 0.40, 0.06), a), 1.4 * s, true)
+            c.draw_polyline(PackedVector2Array([p + Vector2(2, -9) * s, p + Vector2(5, -2) * s, p + Vector2(9, 6) * s]), _ca(Color(1.0, 0.50, 0.08), a), 1.1 * s, true)
+            for k in range(3):
+                c.draw_circle(p + Vector2(2.0 + 3.0 * float(k), -15.0 - 5.0 * float(k)) * s, (3.0 + float(k)) * s, Color(0.15, 0.13, 0.13, 0.45 * a))
+        "lighthouse":
+            c.draw_colored_polygon(PackedVector2Array([p + Vector2(-4, 8) * s, p + Vector2(-2.4, -12) * s, p + Vector2(2.4, -12) * s, p + Vector2(4, 8) * s]), _ca(Color(0.78, 0.76, 0.70), a))
+            for k in range(3):
+                var yy := 4.0 - 6.0 * float(k)
+                c.draw_rect(Rect2(p + Vector2(-3.4 + 0.3 * float(k), yy - 1.4) * s, Vector2(6.8 - 0.6 * float(k), 2.4) * s), _ca(Color(0.62, 0.10, 0.08), a))
+            c.draw_colored_polygon(PackedVector2Array([p + Vector2(0, -14) * s, p + Vector2(24, -21) * s, p + Vector2(24, -8) * s]), Color(1.0, 0.92, 0.55, 0.22 * a))
+            c.draw_circle(p + Vector2(0, -14) * s, 2.4 * s, _ca(Color(1.0, 0.85, 0.4), a))
+        "ship":
+            _tide(c, p, s * 1.5, -0.25, a, 0)
+        "cathedral":
+            var wall := _ca(Color(0.50, 0.48, 0.46), a)
+            c.draw_rect(Rect2(p + Vector2(-12, -3) * s, Vector2(19, 10) * s), wall)
+            c.draw_colored_polygon(PackedVector2Array([p + Vector2(-13, -3) * s, p + Vector2(-2.5, -9) * s, p + Vector2(8, -3) * s]), _ca(Color(0.26, 0.24, 0.26), a))
+            c.draw_rect(Rect2(p + Vector2(7, -12) * s, Vector2(7, 19) * s), wall.darkened(0.1))
+            c.draw_colored_polygon(PackedVector2Array([p + Vector2(6, -12) * s, p + Vector2(10.5, -25) * s, p + Vector2(15, -12) * s]), _ca(Color(0.22, 0.20, 0.22), a))
+            c.draw_circle(p + Vector2(10.5, -7) * s, 1.8 * s, _ca(Color(0.85, 0.66, 0.30), a))
+            c.draw_circle(p + Vector2(-3, 1.5) * s, 2.4 * s, _ca(Color(0.62, 0.20, 0.30), a))
+        "mirror":
+            c.draw_colored_polygon(PackedVector2Array([p + Vector2(-6, 8) * s, p + Vector2(-3.5, -16) * s, p + Vector2(0, -22) * s, p + Vector2(3.5, -16) * s, p + Vector2(6, 8) * s]), _ca(Color(0.10, 0.06, 0.14), a))
+            c.draw_polyline(PackedVector2Array([p + Vector2(-1, -17) * s, p + Vector2(1.5, -8) * s, p + Vector2(-1.5, -1) * s, p + Vector2(1, 6) * s]), _ca(Color(0.85, 0.75, 1.0), 0.8 * a), 0.9 * s, true)
+            c.draw_circle(p + Vector2(0, -22) * s, 3.5 * s, Color(0.70, 0.50, 1.0, 0.28 * a))
+        "machine":
+            var gear := _ca(Color(0.48, 0.30, 0.18), a)
+            for k in range(10):
+                var ang := TAU * float(k) / 10.0
+                c.draw_colored_polygon(_rect_poly(p, ang, -1.8 * s, -12.0 * s, 1.8 * s, -8.0 * s), gear)
+            c.draw_circle(p, 9.0 * s, gear)
+            c.draw_circle(p, 4.0 * s, _ca(Color(0.16, 0.10, 0.07), a))
+            c.draw_rect(Rect2(p + Vector2(10, -16) * s, Vector2(4, 16) * s), _ca(Color(0.26, 0.17, 0.12), a))
+            for k in range(3):
+                c.draw_circle(p + Vector2(12.0 + 2.0 * float(k), -19.0 - 4.5 * float(k)) * s, (2.4 + float(k)) * s, Color(0.15, 0.13, 0.12, 0.40 * a))
 
 # ================= Малювання: значки, виділення, назви (у координатах вікна) =================
 func _sword(c: Control, base: Vector2, k: float) -> void:
@@ -1111,6 +1377,8 @@ func _draw_markers() -> void:
     var font: Font = GameFonts.dark()      # назви локацій — зловісним шрифтом
     var fs := 14
     var vr := Rect2(Vector2(-70.0, -90.0), view.size + Vector2(140.0, 180.0))
+    for bn in _banners:
+        _draw_banner(c, String(bn[0]), bn[1], k)
 
     # виділення районів
     for i in range(_cells.size()):
@@ -1119,7 +1387,7 @@ func _draw_markers() -> void:
             continue
         if id != selected and id != hovered:
             continue
-        var sp := _tpoly(_cells[i])
+        var sp := _tpoly(_shapes[i])
         var edge := sp.duplicate()
         edge.append(edge[0])
         if id == selected:
@@ -1178,43 +1446,90 @@ func _draw_markers() -> void:
         if id2 == selected:
             _sword(c, p + Vector2(rad + 10.0 * k, 4.0 * k), k)
 
-        # табличка з назвою
+        # табличка з назвою — стрічка з вирізаними кінцями; сусіди в ряду чергуються над/під значком
         var name_s := String(loc["name"])
-        var tw := font.get_string_size(name_s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-        var pw := tw + 14.0
+        var fs2 := int(round(12.0 * k))
+        var tw := font.get_string_size(name_s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs2).x
+        var pw := tw + 20.0 * k
+        var ph := 19.0 * k
+        var up: bool = _label_up[i]
         var px := clampf(p.x - pw * 0.5, 6.0, maxf(6.0, view.size.x - 6.0 - pw))
-        var py := minf(p.y + rad + 4.0, view.size.y - 34.0)
-        var sb := _sb_lock
-        var tcol := Color(0.62, 0.62, 0.66)
+        var py := p.y - rad - 6.0 * k - ph if up else p.y + rad + 6.0 * k
+        var fill2 := Color(0.08, 0.08, 0.09, 0.90)
+        var edge2 := Color(0.40, 0.40, 0.44)
+        var tcol := Color(0.66, 0.66, 0.70)
         if done:
-            sb = _sb_done
-            tcol = Color(0.78, 0.96, 0.74)
+            fill2 = Color(0.05, 0.13, 0.06, 0.93)
+            edge2 = Color(0.45, 0.80, 0.42)
+            tcol = Color(0.82, 0.97, 0.76)
         elif unlocked:
-            sb = _sb_open
-            tcol = Color(0.98, 0.88, 0.55)
-        c.draw_style_box(sb, Rect2(px, py, pw, 20.0))
-        c.draw_string(font, Vector2(px + 8.0, py + 15.0), name_s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0, 0, 0, 0.8))
-        c.draw_string(font, Vector2(px + 7.0, py + 14.0), name_s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, tcol)
+            fill2 = Color(0.13, 0.07, 0.03, 0.94)
+            edge2 = GOLD
+            tcol = Color(1.0, 0.90, 0.60)
+        var notch := 6.0 * k
+        var rib := PackedVector2Array([
+            Vector2(px - notch, py), Vector2(px + pw + notch, py), Vector2(px + pw, py + ph * 0.5),
+            Vector2(px + pw + notch, py + ph), Vector2(px - notch, py + ph), Vector2(px, py + ph * 0.5)])
+        c.draw_colored_polygon(rib, fill2)
+        c.draw_polyline(_closed(rib), Color(0, 0, 0, 0.8), 3.0, true)
+        c.draw_polyline(_closed(rib), edge2, 1.3, true)
+        c.draw_string(font, Vector2(px + 10.0 * k + 1.0, py + ph * 0.5 + fs2 * 0.36 + 1.0), name_s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs2, Color(0, 0, 0, 0.85))
+        c.draw_string(font, Vector2(px + 10.0 * k, py + ph * 0.5 + fs2 * 0.36), name_s, HORIZONTAL_ALIGNMENT_LEFT, -1, fs2, tcol)
 
-        # складність (крапки); після Замку епіцентру перші red крапок — яскраво-червоні й більші («кривава» складність)
+        # складність (черепи-крапки) — лише для вибраної чи наведеної локації, щоб карта не рябіла
+        if id2 != selected and id2 != hovered:
+            continue
         var tier := int(loc["tier"])
         var red := Locations.red_skulls(loc)
-        var sx := px + pw * 0.5 - float(tier) * 3.5 + 1.75
+        var dy := py - 6.0 * k if up else py + ph + 6.0 * k
+        var sx := px + pw * 0.5 - float(tier) * 3.5 * k + 1.75 * k
         for n in range(tier):
             var dc := Color(0.85, 0.15, 0.12)
-            if not unlocked:
-                dc = Color(0.35, 0.35, 0.38)
-            elif done:
-                dc = Color(0.35, 0.70, 0.35)
-            var dr := 2.2
-            if red > 0:
-                if n < red:
-                    dr = 3.0
-                    dc = Color(1.0, 0.05, 0.03) if unlocked else Color(0.55, 0.18, 0.18)
-                    c.draw_circle(Vector2(sx + 7.0 * float(n), py + 26.0), dr + 1.4, Color(0.25, 0.0, 0.0, 0.9))
-                else:
-                    dc = Color(0.88, 0.80, 0.68) if unlocked else Color(0.35, 0.35, 0.38)    # решта «білих» черепів
-            c.draw_circle(Vector2(sx + 7.0 * float(n), py + 26.0), dr, dc)
+            var dr := 2.2 * k
+            if red > 0 and n < red:
+                dr = 2.9 * k
+                dc = Color(1.0, 0.05, 0.03)
+                c.draw_circle(Vector2(sx + 7.0 * k * float(n), dy), dr + 1.3, Color(0.25, 0.0, 0.0, 0.9))
+            elif red > 0:
+                dc = Color(0.88, 0.80, 0.68)
+            c.draw_circle(Vector2(sx + 7.0 * k * float(n), dy), dr, dc)
+
+# Гербовий прапор кампанії ліворуч від її ряду: знак, назва й поступ.
+func _draw_banner(c: Control, camp: String, wpos: Vector2, k: float) -> void:
+    var p := _w2s(wpos)
+    var w := 104.0 * k
+    var h := 74.0 * k
+    if p.y < -h or p.y > view.size.y + h:
+        return
+    var col: Color = CAMPAIGN_COLORS.get(camp, GOLD)
+    var x0 := p.x - w * 0.5
+    var y0 := p.y - h * 0.5
+    var flag := PackedVector2Array([Vector2(x0, y0), Vector2(x0 + w, y0), Vector2(x0 + w, y0 + h),
+        Vector2(x0 + w * 0.5, y0 + h - 14.0 * k), Vector2(x0, y0 + h)])
+    var sh := PackedVector2Array()
+    for q in flag:
+        sh.append(q + Vector2(3.0, 4.0))
+    c.draw_colored_polygon(sh, Color(0, 0, 0, 0.5))
+    c.draw_colored_polygon(flag, col.darkened(0.72))
+    c.draw_polyline(_closed(flag), Color(0, 0, 0, 0.9), 3.4, true)
+    c.draw_polyline(_closed(flag), col.lerp(GOLD, 0.5), 1.6, true)
+    c.draw_line(Vector2(x0 - 4.0 * k, y0), Vector2(x0 + w + 4.0 * k, y0), Color(0.30, 0.18, 0.08), 4.0 * k)
+    var done := 0
+    for loc in Locations.DATA:
+        if String(loc.get("campaign", "")) == camp and GameState.conquered.has(String(loc["id"])):
+            done += 1
+    # знак кампанії — медальйон із тим самим малюнком, що й на землях цієї кампанії
+    var emblem := Vector2(p.x, y0 + 17.0 * k)
+    c.draw_circle(emblem, 13.0 * k, Color(0.03, 0.02, 0.02, 0.9))
+    c.draw_arc(emblem, 13.0 * k, 0.0, TAU, 28, col.lerp(GOLD, 0.5), 1.4, true)
+    var kinds := {"tide": 11, "bells": 12, "glass": 13, "iron": 14}
+    _doodle(c, int(kinds.get(camp, 11)), emblem + Vector2(0.0, 1.0 * k), 0.85 * k, 0.0, 1.0, 2)
+    var font: Font = GameFonts.royal()
+    var fs := int(round(10.5 * k))
+    c.draw_multiline_string(font, Vector2(x0 + 4.0 * k, y0 + 33.0 * k + fs * 0.7), String(CAMPAIGN_TITLES.get(camp, camp)), HORIZONTAL_ALIGNMENT_CENTER, w - 8.0 * k, fs, 2, col.lerp(Color(1, 0.95, 0.8), 0.6))
+    var prog := "%d / 5" % done
+    var pf := int(round(9.0 * k))
+    c.draw_string(font, Vector2(x0, y0 + h - 17.0 * k), prog, HORIZONTAL_ALIGNMENT_CENTER, w, pf, Color(0.95, 0.85, 0.6, 0.85))
 
 # ================= Малювання: рамка, завіси, заголовок =================
 func _curtain(c: Control, left: bool) -> void:
@@ -1369,7 +1684,7 @@ func _draw_frame() -> void:
 
     # табличка-заголовок по центру зверху
     var font: Font = GameFonts.royal()     # заголовок карти — королівським
-    var title := "Карта локацій"
+    var title := "Мапа відвойованих земель"
     var fs := 19
     var tw := font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
     var pw := tw + 56.0
@@ -1391,7 +1706,7 @@ func _draw_frame() -> void:
     c.draw_string(font, Vector2(cx - tw * 0.5, r.position.y + 21.0), title, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, GOLD)
 
     # маленька підказка знизу на рамці
-    var hint := "Колесо миші — масштаб   •   Перетягуйте мишею — рух карти"
+    var hint := "Коліщатко — ближче чи далі   •   Затисни й тягни — мандруй мапою"
     var hfs := 12
     var hw := font.get_string_size(hint, HORIZONTAL_ALIGNMENT_LEFT, -1, hfs).x
     var hr := Rect2(cx - (hw + 24.0) * 0.5, m.end.y + 11.0, hw + 24.0, 20.0)

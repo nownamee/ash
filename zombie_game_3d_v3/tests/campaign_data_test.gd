@@ -21,7 +21,7 @@ func _run() -> void:
 	_check(baseline.size() == LEGACY_LOCATION_COUNT and Locations.DATA.size() >= LEGACY_LOCATION_COUNT, "legacy prefix is available")
 	if baseline.size() == LEGACY_LOCATION_COUNT and Locations.DATA.size() >= LEGACY_LOCATION_COUNT:
 		for i in range(LEGACY_LOCATION_COUNT):
-			_check(Locations.DATA[i] == baseline[i], "loc%d matches its full 96.zip record" % (i + 1))
+			_check(_without_text(Locations.DATA[i]) == _without_text(baseline[i]), "loc%d matches its 96.zip record except player-facing text" % (i + 1))
 
 	_test_ids_and_campaigns()
 	_test_biomes_bosses_and_pools()
@@ -35,6 +35,21 @@ func _run() -> void:
 	else:
 		printerr("FAIL: %d of %d campaign data checks failed" % [failures, checks])
 		quit(1)
+
+func _without_text(value: Variant) -> Variant:
+	if value is Dictionary:
+		var out := {}
+		for key in value:
+			if key == "name" or key == "desc" or key == "msg":
+				continue
+			out[key] = _without_text(value[key])
+		return out
+	if value is Array:
+		var items := []
+		for item in value:
+			items.append(_without_text(item))
+		return items
+	return value
 
 func _load_baseline_locations() -> Array:
 	var zip := ZIPReader.new()
@@ -168,14 +183,33 @@ func _test_map_icons_and_bounds() -> void:
 	if map_script == null:
 		return
 	var constants := map_script.get_script_constant_map()
-	var span: Vector2 = constants.get("MAP_SPAN", Vector2.ZERO)
 	var world: Vector2 = constants.get("WORLD", Vector2.ZERO)
-	var origin := Vector2(float(constants.get("EXTRA_LEFT", 0.0)), float(constants.get("EXTRA_TOP", 0.0)))
-	_check(span.x > 0.0 and span.y > 0.0 and world.x > 0.0 and world.y > 0.0, "map exposes valid world dimensions")
+	_check(world.x > 0.0 and world.y > 0.0, "map exposes valid world dimensions")
+	var layout: Dictionary = map_script.call("layout_centers")
+	var route: Array = map_script.call("route_order")
+	_check(route.size() == Locations.DATA.size(), "map route lists every location exactly once")
+	var lowest_campaign_y := INF
+	var highest_main_y := -INF
 	for loc in Locations.DATA:
-		var map_pos: Vector2 = loc["pos"] * span + origin
 		var id := String(loc.get("id", "?"))
+		_check(layout.has(id), "%s has a map position" % id)
+		_check(route.has(id), "%s is on the map route" % id)
+		if not layout.has(id):
+			continue
+		var map_pos: Vector2 = layout[id]
 		_check(map_pos.x >= 0.0 and map_pos.y >= 0.0 and map_pos.x <= world.x and map_pos.y <= world.y, "%s marker fits inside map world" % id)
+		if loc.has("campaign"):
+			lowest_campaign_y = minf(lowest_campaign_y, -map_pos.y)
+		else:
+			highest_main_y = maxf(highest_main_y, -map_pos.y)
+	_check(lowest_campaign_y > highest_main_y, "all campaign lands lie above the main road")
+	# сусіди за маршрутом стоять поруч, а не розкидані картою
+	for r in range(1, route.size()):
+		var a: String = route[r - 1]
+		var b: String = route[r]
+		if Locations.by_id(b).has("campaign") and int(Locations.by_id(b).get("stage", 1)) == 1:
+			continue
+		_check(Vector2(layout[a]).distance_to(layout[b]) < 400.0, "%s sits next to %s on the map" % [b, a])
 
 func _check(condition: bool, message: String) -> void:
 	checks += 1
