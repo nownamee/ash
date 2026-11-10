@@ -10,7 +10,7 @@ extends RefCounted
 # Після того як поклали файл, відкрийте проєкт у Godot і зачекайте, поки редактор його імпортує (внизу праворуч).
 # Якщо своїх шрифтів немає, працюють запасні: Lora Bold (королівський) і Arsenal SC (зловісний, потовщений).
 
-const BUILTIN := ["Lora-Bold.ttf", "ArsenalSC-Regular.ttf"]
+const BUILTIN_PREFIXES := ["Lora-", "ArsenalSC-", "CormorantSC-", "CormorantGaramond-", "RuslanDisplay-"]
 const EXTS := ["ttf", "otf", "woff", "woff2"]
 
 static var _royal: Font
@@ -29,7 +29,7 @@ static func _customs() -> Array:
         var fname := String(f)
         if fname.ends_with(".import"):
             fname = fname.trim_suffix(".import")
-        if seen.has(fname) or BUILTIN.has(fname) or fname.begins_with("Lora-") or fname.begins_with("ArsenalSC-"):
+        if seen.has(fname) or _is_builtin(fname):
             continue
         if not EXTS.has(fname.get_extension().to_lower()):
             continue
@@ -37,6 +37,21 @@ static func _customs() -> Array:
         _custom_cache.append(fname)
     _custom_cache.sort()
     return _custom_cache
+
+static func _is_builtin(fname: String) -> bool:
+    for p in BUILTIN_PREFIXES:
+        if fname.begins_with(p):
+            return true
+    return false
+
+static func _variable(path: String, weight: int, embolden: float = 0.0, glyph_space: int = 0) -> Font:
+    var fv := FontVariation.new()
+    fv.base_font = load(path) as Font
+    if path.find("-VF") >= 0:
+        fv.variation_opentype = {"wght": weight}
+    fv.variation_embolden = embolden
+    fv.spacing_glyph = glyph_space
+    return fv
 
 static func _load(fname: String) -> Font:
     var p := "res://fonts/" + fname
@@ -77,7 +92,7 @@ static func royal() -> Font:
         if n != "":
             _royal = _load(n)
         if _royal == null:
-            _royal = load("res://fonts/Lora-Bold.ttf") as Font
+            _royal = load("res://fonts/CormorantSC-Bold.ttf") as Font
     return _royal
 
 # Зловісний (темний): назви локацій, складність, повідомлення бою, ПОРАЗКА.
@@ -89,30 +104,21 @@ static func dark() -> Font:
         if _dark == null and has_custom():
             _dark = royal()           # один свій шрифт на всю гру
         if _dark == null:
-            var fv := FontVariation.new()
-            fv.base_font = load("res://fonts/ArsenalSC-Regular.ttf") as Font
-            fv.variation_embolden = 0.7
-            _dark = fv
+            _dark = _variable("res://fonts/RuslanDisplay-Regular.ttf", 400, 0.3)
     return _dark
 
-# Повідомлення в бою (хвиля, бос, місія, небезпека): елегантний курсив Lora Bold Italic (fonts/Lora-BoldItalic.ttf).
+# Повідомлення в бою: курсив Cormorant Garamond Bold Italic.
 static var _msg: Font
 static func message() -> Font:
     if _msg == null:
-        _msg = _load("Lora-BoldItalic.ttf")
-        if _msg == null:
-            _msg = dark()
+        _msg = _variable("res://fonts/CormorantGaramond-Italic-VF.ttf", 700, 0.2)
     return _msg
 
-# Маленький підпис над повідомленням (ХВИЛЯ, ВАТАЖОК...): Arsenal SC з розрідженими літерами.
+# Маленький підпис (ХВИЛЯ, ВАТАЖОК...): Cormorant SC з розрідженими літерами.
 static var _tag: Font
 static func tag() -> Font:
     if _tag == null:
-        var fv := FontVariation.new()
-        fv.base_font = load("res://fonts/ArsenalSC-Regular.ttf") as Font
-        fv.variation_embolden = 0.5
-        fv.spacing_glyph = 3
-        _tag = fv
+        _tag = _variable("res://fonts/CormorantSC-Bold.ttf", 700, 0.3, 3)
     return _tag
 
 # Основний шрифт для всього тексту, де не задано окремий.
@@ -123,8 +129,10 @@ static func body() -> Font:
         var n := _pick(["body"])
         if n != "":
             _body = _load(n)
-        if _body == null:
+        if _body == null and has_custom():
             _body = royal()
+        if _body == null:
+            _body = _variable("res://fonts/CormorantGaramond-VF.ttf", 600, 0.25)
     return _body
 
 # Робить body() шрифтом за замовчуванням у всій грі: Control-елементи, Label3D (цифри урону) тощо.
