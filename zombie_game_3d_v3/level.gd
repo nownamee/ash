@@ -9,6 +9,7 @@ const Locations = preload("res://locations.gd")
 const GameState = preload("res://game_state.gd")
 const Skills = preload("res://skills.gd")
 const GameFonts = preload("res://game_fonts.gd")
+const Frames = preload("res://ornate_frame.gd")
 const PlayerScript = preload("res://player.gd")
 const ZombieScript = preload("res://zombie.gd")
 const TerrainScript = preload("res://terrain.gd")
@@ -258,16 +259,16 @@ func _ready() -> void:
     Sfx.set_battle_state(0, 0, 1.0, 0.0, false)
     if castle_wait and defend:
         if burning:
-            _show_message("Стіни бази позаду. Далеко на півночі над лісом стоїть зарево: це горить застава лицарів. Поспішай дорогою!", 6.0)
+            _show_message("Стіни бази позаду. Далеко на півночі над лісом тремтить зарево: палає застава лицарів. Гони дорогою, поки не згасла остання вежа!", 6.0)
         else:
-            _show_message("Стіни бази позаду. Дорога на північ веде до застави лицарів, і мертві там тримаються осторонь.", 6.0)
+            _show_message("Стіни бази позаду. Північний шлях провадить до застави лицарів; мертві тут звикли ховатися в узбіччях.", 6.0)
     elif escort:
         minimap.goal = Vector3(0.0, 0.0, -escort_len)
-        _show_message("Година настала. Вирушай дорогою на північ: десь там тебе чекає поранений лицар.", 6.0)
+        _show_message("Година настала. Рушай північним шляхом: десь там стікає кров’ю поранений лицар і чекає на тебе.", 6.0)
     elif castle_wait and clear:
-        _show_message("Замок лишився позаду. Щойно переступиш поріг, почнеться зачистка. Стежка веде на північ, до розвилки.", 6.0)
+        _show_message("Замок лишився позаду. Зачистка почнеться, щойно переступиш поріг. Стежка в’ється на північ, до розвилки.", 6.0)
     elif castle_wait:
-        _show_message("Брама відчинена, а мертві вже чують твої кроки. Стежка веде на північ, до розвилки.", 6.0)
+        _show_message("Брама розчахнулась, а мертві вже ловлять твої кроки. Стежка в’ється на північ, до розвилки.", 6.0)
     else:
         _start_wave(1)
 
@@ -424,13 +425,13 @@ func _start_wave(n: int) -> void:
         _show_message("ОРДА! Вона не відступить, доки не впаде її ватажок!", 4.5)
         Sfx.play("boss_roar")
     elif boss_pending and n >= 5 and not _plan().is_empty():
-        _show_message("ОСТАННЯ ХВИЛЯ! Земля дрижить: на арену виходить володар цих земель!", 4.5)
+        _show_message("ОСТАННЯ ХВИЛЯ! Земля здригається: на арену ступає володар цих проклятих земель!", 4.5)
         Sfx.play("boss_roar")
     elif boss_pending:
-        _show_message("Остання хвиля! З темряви виходить ватажок!", 3.5)
+        _show_message("Остання хвиля! З темряви виринає ватажок!", 3.5)
         Sfx.play("boss_roar")
     else:
-        _show_message("Хвиля %d з %d: тримайся!" % [n, max_waves], 2.0)
+        _show_message("Хвиля %d з %d: стій твердо, воїне!" % [n, max_waves], 2.0)
         Sfx.play("wave")
     _refresh_hud()
 
@@ -477,7 +478,7 @@ func _process(delta: float) -> void:
         if horde_boss and to_spawn <= int(loc["horde_count"]) / 2:
             horde_boss = false
             _spawn_zombie(String(loc["boss"]))
-            _show_message("Пісок здригнувся: із бархана виходить ватажок пустелі!", 3.0)
+            _show_message("Пісок здригнувся: із бархана постає ватажок пустелі!", 3.0)
             Sfx.play("boss_roar")
         var pl := _plan()
         var cap := MAX_ALIVE
@@ -499,7 +500,7 @@ func _process(delta: float) -> void:
         if intermission < 0.0:
             intermission = 4.0
             player.heal(int(float(player.max_hp) * 0.25))
-            _show_message("Хвилю %d відбито! Переведи подих: частину сил відновлено." % wave, 3.0)
+            _show_message("Хвилю %d відбито! Переведи подих: частину сил тобі повернено." % wave, 3.0)
             Sfx.play("clear")
         intermission -= delta
         if intermission <= 0.0:
@@ -529,7 +530,7 @@ func _start_march() -> void:
     wave = 1
     to_spawn = 0
     boss_pending = false
-    _show_message("Тиха дорога на північ. Мертві тут рідкість, та пильності не втрачай.", 4.0)
+    _show_message("Тиха дорога на північ. Мертві тут рідкість, та не спускай ока з тіней.", 4.0)
     _refresh_hud()
 
 func _update_defend(delta: float) -> void:
@@ -569,9 +570,9 @@ func _begin_prep() -> void:
     prep_time = 15.0
     if burning:
         prep_time = 12.0
-        _show_message("Командор Айвор: «Замок горить! Кожна секунда на рахунку, а мертві вже йдуть крізь вогонь!»", 5.0)
+        _show_message("Командор Айвор: «Замок палає! Кожен удар серця на вагу золота, а мертві вже суне крізь полум’я!»", 5.0)
     else:
-        _show_message("Командор Айвор: «Без тебе нам мури не втримати. Тримайся поруч!»", 5.0)
+        _show_message("Командор Айвор: «Без твого меча мури не встоять. Тримайся поруч!»", 5.0)
     Sfx.play("wave")
 
 func _begin_siege() -> void:
@@ -581,7 +582,7 @@ func _begin_siege() -> void:
     horde_boss = true
     spawn_timer = 1.0
     if burning:
-        _show_message("ОРДА КРІЗЬ ВОГОНЬ! Замок горить, і вони б'ють по ньому вдвічі дужче!", 4.5)
+        _show_message("ОРДА КРІЗЬ ВОГОНЬ! Замок палає, а мертві б’ють по ньому вдвічі люттєвіше!", 4.5)
     else:
         _show_message("ОРДА ЙДЕ НА ЗАМОК! Не дай їм розбити мури!", 4.5)
     Sfx.play("boss_roar")
@@ -593,7 +594,7 @@ func _siege_tick(delta: float) -> void:
         if horde_boss and to_spawn <= int(loc["horde_count"]) / 2:
             horde_boss = false
             _spawn_siege_zombie(String(loc["boss"]))
-            _show_message("Із натовпу виходить ватажок: %s!" % String(ZombieTypes.DATA[String(loc["boss"])]["name"]).replace(" (БОС)", ""), 3.5)
+            _show_message("З натовпу виступає ватажок: %s!" % String(ZombieTypes.DATA[String(loc["boss"])]["name"]).replace(" (БОС)", ""), 3.5)
             Sfx.play("boss_roar")
         spawn_timer -= delta
         if spawn_timer <= 0.0 and alive < MAX_ALIVE:
@@ -647,20 +648,20 @@ func _update_defend_ui() -> void:
     castle_label.text = "ЗАМОК  %d / %d" % [int(ceilf(hp_now)), int(hp_max)]
     match defend_phase:
         "base":
-            info_label.text = "Вийдіть за ворота й ідіть дорогою на північ"
+            info_label.text = "Крізь браму — північним шляхом"
         "march":
             var wp: Vector3 = keep.attack_point(player.global_position)
             var d := Vector2(player.global_position.x - wp.x, player.global_position.z - wp.z).length()
-            info_label.text = "До застави: %d м" % int(d)
+            info_label.text = "До застави ще %d м" % int(d)
         "prep":
-            info_label.text = "Хвиля через %d с. Готуйтеся!" % int(ceilf(prep_time))
+            info_label.text = "Хвиля надходить за %d с. До зброї!" % int(ceilf(prep_time))
             if burning:
-                info_label.text += "   ЗАМОК ГОРИТЬ: -%d HP/с" % int(burn_dps)
+                info_label.text += "   ЗАМОК ПАЛАЄ: −%d HP/с" % int(burn_dps)
         "siege":
             var left := to_spawn + get_tree().get_nodes_in_group("zombies").size()
-            info_label.text = "Ворогів лишилось: %d" % left
+            info_label.text = "Мертвих ще лишилось: %d" % left
             if burning:
-                info_label.text += "   ЗАМОК ГОРИТЬ: -%d HP/с" % int(burn_dps)
+                info_label.text += "   ЗАМОК ПАЛАЄ: −%d HP/с" % int(burn_dps)
 
 func _on_keep_destroyed() -> void:
     if state != "playing":
@@ -668,19 +669,19 @@ func _on_keep_destroyed() -> void:
     state = "lost"
     var kept := earned / 2
     GameState.coins += kept
-    GameState.last_result = "Замок на «%s» зруйновано. Збережено монет: %d" % [String(loc["name"]), kept]
+    GameState.last_result = "Замок на «%s» зруйновано. Врятовано монет: %d" % [String(loc["name"]), kept]
     GameState.save_game()
     Sfx.music("")
     Sfx.play("defeat")
     if burning:
         _show_message("ЗАМОК ЗГОРІВ ДОТЛА!", 3.0)
     else:
-        _show_message("МУРИ ПАЛИ! Замку більше немає.", 3.0)
+        _show_message("МУРИ ПАЛИ! Від замку лишився самий попіл.", 3.0)
     await get_tree().create_timer(2.6).timeout
     if burning:
-        _show_end("ЗАМОК ЗГОРІВ", "Вогонь і мерці зруйнували замок.\nВбито: %d\nЗбережено монет: %d (половина здобичі)" % [kills, kept])
+        _show_end("ЗАМОК ЗГОРІВ", "Вогонь і мертві зруйнували твердиню.\nПовалено мерців: %d\nВрятовано монет: %d (половина здобичі)" % [kills, kept])
         return
-    _show_end("ЗАМОК ПАВ", "Хвиля зламала мури.\nВбито: %d\nЗбережено монет: %d (половина здобичі)" % [kills, kept])
+    _show_end("ЗАМОК ПАВ", "Хвиля зламала мури.\nПовалено мерців: %d\nВрятовано монет: %d (половина здобичі)" % [kills, kept])
 
 # Замок: ворота відчиняються, коли герой підходить, і зачиняються назавжди, щойно він вийшов.
 func _update_castle() -> void:
@@ -695,7 +696,7 @@ func _update_castle() -> void:
         if defend:
             _start_march()
         elif clear:
-            _show_message("ЗАЧИСТКА: обійди все село й упокой кожного. Вони сплять, але чутливо: підходь обережно.", 5.0)
+            _show_message("ЗАЧИСТКА: обійди все село й упокой кожного. Вони сплять, але чутко: підступай нечутно.", 5.0)
         else:
             _start_wave(1)
         return
@@ -739,7 +740,7 @@ func _update_escort(delta: float) -> void:
     if escort_phase == "back" and knight.state == "following":
         var k: Vector3 = knight.global_position
         if absf(k.x) < 11.0 and k.z > -11.0 and k.z < 11.0:
-            _show_message("Лицар у безпеці! Ворота замку зачинено за вами.", 3.0)
+            _show_message("Лицар у безпеці! Брама замку зачинилась за вами.", 3.0)
             _victory()
             return
     # постійний спавн: на шляху до лицаря рідше, на зворотному — трохи частіше
@@ -771,11 +772,11 @@ func _on_knight_died() -> void:
     state = "lost"
     var kept := earned / 2
     GameState.coins += kept
-    GameState.last_result = "Лицар загинув на «%s». Збережено монет: %d" % [String(loc["name"]), kept]
+    GameState.last_result = "Лицар упав на «%s». Врятовано монет: %d" % [String(loc["name"]), kept]
     GameState.save_game()
     Sfx.music("")
     Sfx.play("defeat")
-    _show_end("ПОРАЗКА", "Лицар загинув дорогою до замку.\nВбито: %d\nЗбережено монет: %d (половина здобичі)" % [kills, kept])
+    _show_end("ПОРАЗКА", "Лицар упав дорогою до замку.\nПовалено мерців: %d\nВрятовано монет: %d (половина здобичі)" % [kills, kept])
 
 # Фонові звуки бою: стогін зомбі десь поруч і серцебиття при малому здоров'ї.
 func _ambient_sounds(delta: float) -> void:
@@ -831,7 +832,7 @@ const MAGMA_DMG_MULT := 5.0      # урон магми = урон опіку в�
 # Зомбі не з'являються всередині вулканів: точку з гори виштовхуємо за підніжжя (VolcanoScript.push_out).
 
 func _on_volcano_erupting() -> void:
-    _show_message("ВУЛКАН СТРІЛЯЄ! Тікай із червоної зони!", 2.6)
+    _show_message("ВУЛКАН ВИВЕРГАЄТЬСЯ! Геть із червоного кола!", 2.6)
 
 # Кислотні калюжі («Токсичне болото»): гравця роз'їдає й сповільнює, поки він стоїть у калюжі. Зомбі кислота не шкодить.
 const ACID_TICK := 0.45          # пауза між ударами, с
@@ -846,7 +847,7 @@ func _update_acid(delta: float) -> void:
         return
     if acid_msg_t <= 0.0:
         acid_msg_t = 5.0
-        _show_message("Кислота пече! Геть із калюжі!", 1.8)
+        _show_message("Кислота роз’їдає! Геть із калюжі!", 1.8)
     acid_t -= delta
     if acid_t <= 0.0:
         acid_t = ACID_TICK
@@ -864,7 +865,7 @@ func _update_fire(delta: float) -> void:
         if terrain.in_fire(pp.x, pp.z):
             if fire_msg_t <= 0.0:
                 fire_msg_t = 5.0
-                _show_message("Полум'я лиже чоботи! Тікай звідси!", 1.8)
+                _show_message("Полум’я лиже чоботи! Тікай звідси!", 1.8)
             fire_t -= delta
             if fire_t <= 0.0:
                 fire_t = FIRE_TICK
@@ -1076,20 +1077,20 @@ func _victory() -> void:
         bonus = Locations.first_reward(loc)
     GameState.coins += earned + bonus
     GameState.conquered[String(loc["id"])] = true
-    GameState.last_result = "Локацію «%s» відвойовано! Отримано монет: %d" % [String(loc["name"]), earned + bonus]
+    GameState.last_result = "Землі «%s» відвойовано! Здобуто монет: %d" % [String(loc["name"]), earned + bonus]
     GameState.save_game()
     Sfx.music("")
     Sfx.play("victory")
     var extra := ""
     if first:
-        extra = "\nВідкрито нові локації на карті!"
+        extra = "\nНа мапі проступили нові землі!"
     if defend:
-        _show_end("ЗАМОК ВРЯТОВАНО!" if burning else "ЗАМОК ВИСТОЯВ!", "Хвилю відбито, а замок лицарів цілий (%d з %d).\nЗа вбивства: %d монет\nНагорода: %d монет%s" % [int(ceilf(float(keep.hp))), int(keep.max_hp), earned, bonus, extra])
+        _show_end("ТВЕРДИНЯ ВРЯТОВАНА!" if burning else "ТВЕРДИНЯ СТОЇТЬ!", "Хвилю відбито, а твердиня лицарів стоїть (%d з %d).\nЗа повалених: %d монет\nВинагорода: %d монет%s" % [int(ceilf(float(keep.hp))), int(keep.max_hp), earned, bonus, extra])
         return
     if clear:
-        _show_end("СЕЛО ЗАЧИЩЕНО!" if String(loc["id"]) == "loc8" else "ЛОКАЦІЮ ЗАЧИЩЕНО!", "Жоден мертвий не лишився на ногах.\nЗа вбивства: %d монет\nНагорода: %d монет%s" % [earned, bonus, extra])
+        _show_end("СЕЛО ЗАЧИЩЕНО!" if String(loc["id"]) == "loc8" else "ЗЕМЛІ ОЧИЩЕНО!", "Жоден мертвий не лишився на ногах.\nЗа повалених: %d монет\nВинагорода: %d монет%s" % [earned, bonus, extra])
         return
-    _show_end("ПЕРЕМОГА!", "Локацію «%s» відвойовано.\nЗа вбивства: %d монет\nНагорода: %d монет%s" % [String(loc["name"]), earned, bonus, extra])
+    _show_end("ПЕРЕМОГА!", "Землі «%s» відвойовано.\nЗа повалених: %d монет\nВинагорода: %d монет%s" % [String(loc["name"]), earned, bonus, extra])
 
 func _on_died() -> void:
     if state != "playing":
@@ -1097,20 +1098,20 @@ func _on_died() -> void:
     state = "lost"
     var kept := earned / 2
     GameState.coins += kept
-    GameState.last_result = "Поразка на «%s». Збережено монет: %d" % [String(loc["name"]), kept]
+    GameState.last_result = "Поразка на «%s». Врятовано монет: %d" % [String(loc["name"]), kept]
     GameState.save_game()
     Sfx.music("")
     Sfx.play("defeat")
     if defend:
-        _show_end("ПОРАЗКА", "Вас убито, і замок лишився без захисника.\nВбито: %d\nЗбережено монет: %d (половина здобичі)" % [kills, kept])
+        _show_end("ПОРАЗКА", "Ти поліг, і замок лишився без оборонця.\nПовалено мерців: %d\nВрятовано монет: %d (половина здобичі)" % [kills, kept])
         return
     if clear:
-        _show_end("ПОРАЗКА", "Вас розбудили надто багато.\nЗалишалось зомбі: %d\nВбито: %d\nЗбережено монет: %d (половина здобичі)" % [_clear_left(get_tree().get_nodes_in_group("zombies").size()), kills, kept])
+        _show_end("ПОРАЗКА", "Ти розбудив надто багатьох.\nЛишилось мерців: %d\nПовалено: %d\nВрятовано монет: %d (половина здобичі)" % [_clear_left(get_tree().get_nodes_in_group("zombies").size()), kills, kept])
         return
     if escort:
-        _show_end("ПОРАЗКА", "Вас з'їли дорогою.\nВбито: %d\nЗбережено монет: %d (половина здобичі)" % [kills, kept])
+        _show_end("ПОРАЗКА", "Дорога пожерла тебе.\nПовалено мерців: %d\nВрятовано монет: %d (половина здобичі)" % [kills, kept])
         return
-    _show_end("ПОРАЗКА", "Вас з'їли на хвилі %d з %d.\nВбито: %d\nЗбережено монет: %d (половина здобичі)" % [wave, max_waves, kills, kept])
+    _show_end("ПОРАЗКА", "Хвиля %d з %d зім’яла тебе.\nПовалено мерців: %d\nВрятовано монет: %d (половина здобичі)" % [wave, max_waves, kills, kept])
 
 func _show_end(title: String, info: String) -> void:
     if campaign != null:
@@ -1149,7 +1150,7 @@ func _quit_to_menu() -> void:
     if state == "playing":
         var kept := earned / 2
         GameState.coins += kept
-        GameState.last_result = "Бій перервано. Збережено монет: %d" % kept
+        GameState.last_result = "Битву полишено. Врятовано монет: %d" % kept
         GameState.save_game()
     _to_menu()
 
@@ -1232,19 +1233,19 @@ func _build_ui() -> void:
     pbox.add_theme_constant_override("separation", 10)
     pause_panel.add_child(pbox)
     var ptitle := Label.new()
-    ptitle.text = "Пауза"
+    ptitle.text = "Перепочинок"
     ptitle.add_theme_font_override("font", GameFonts.royal())
     ptitle.add_theme_color_override("font_color", Color(1.0, 0.85, 0.35))
     ptitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     ptitle.add_theme_font_size_override("font_size", 30)
     pbox.add_child(ptitle)
     var b_resume := Button.new()
-    b_resume.text = "Продовжити"
+    b_resume.text = "До бою!"
     b_resume.custom_minimum_size = Vector2(360, 44)
     b_resume.pressed.connect(_set_pause.bind(false))
     pbox.add_child(b_resume)
     var b_quit := Button.new()
-    b_quit.text = "Вийти до карти (половина здобичі)"
+    b_quit.text = "Відступити до мапи (половина здобичі)"
     b_quit.pressed.connect(_quit_to_menu)
     pbox.add_child(b_quit)
 
@@ -1261,11 +1262,11 @@ func _build_ui() -> void:
     end_info.custom_minimum_size = Vector2(460, 0)
     ebox.add_child(end_info)
     var b_retry := Button.new()
-    b_retry.text = "Спробувати ще раз"
+    b_retry.text = "Ще раз у січу"
     b_retry.pressed.connect(_retry)
     ebox.add_child(b_retry)
     var b_map := Button.new()
-    b_map.text = "До карти"
+    b_map.text = "До мапи"
     b_map.pressed.connect(_to_menu)
     ebox.add_child(b_map)
 
@@ -1317,6 +1318,7 @@ func _make_center_panel() -> PanelContainer:
     p.grow_horizontal = Control.GROW_DIRECTION_BOTH
     p.grow_vertical = Control.GROW_DIRECTION_BOTH
     p.visible = false
+    p.add_theme_stylebox_override("panel", Frames.panel())
     ui.add_child(p)
     return p
 
@@ -1437,9 +1439,9 @@ func _build_top_hud() -> void:
     row.add_theme_constant_override("separation", 8)
     row.mouse_filter = Control.MOUSE_FILTER_IGNORE
     ui.add_child(row)
-    var k := _make_chip(row, "res://icons/ui_skull.png", "Вбито", Color(1.0, 0.82, 0.75))
+    var k := _make_chip(row, "res://icons/ui_skull.png", "Полеглих", Color(1.0, 0.82, 0.75))
     kills_label = k[1]
-    var c := _make_chip(row, "res://icons/ui_coin.png", "Монети", HUD_GOLD)
+    var c := _make_chip(row, "res://icons/ui_coin.png", "Скарбець", HUD_GOLD)
     coins_label = c[1]
     var g := _make_chip(row, "res://icons/ui_flag.png", "", HUD_CREAM)
     goal_chip = g[0]
@@ -1480,16 +1482,16 @@ func _build_bottom_hud() -> void:
     hint_panel.add_theme_stylebox_override("panel", hsb)
     ui.add_child(hint_panel)
     var hint := Label.new()
-    var atk_txt := "ЛКМ / Пробіл — атака"
+    var atk_txt := "ЛКМ / Пробіл — удар"
     if player.jump_level > 0:
-        atk_txt = "ЛКМ — атака"
-    var hint_parts: Array = ["WASD — рух", atk_txt]
+        atk_txt = "ЛКМ — удар"
+    var hint_parts: Array = ["WASD — хід", atk_txt]
     if player.dash_level > 0:
         hint_parts.append("ПКМ — ривок")
     if player.jump_level > 0:
         hint_parts.append("Пробіл — стрибок")
-    hint_parts.append("1-5, Q/E, колесо — зброя")
-    hint_parts.append("Esc — пауза")
+    hint_parts.append("1-5, Q/E, колесо — клинок")
+    hint_parts.append("Esc — перепочинок")
     hint.text = "  ·  ".join(hint_parts)
     hint.add_theme_font_size_override("font_size", 12)
     hint.add_theme_color_override("font_color", Color(0.82, 0.76, 0.62))
@@ -1674,7 +1676,7 @@ func _refresh_hud() -> void:
         var left := clear_pending.size() + get_tree().get_nodes_in_group("zombies").size()
         goal = "Зачистка: лишилось %d з %d" % [left, clear_total]
     elif escort:
-        goal = "Знайти лицаря" if escort_phase == "go" else "Довести лицаря до замку"
+        goal = "Відшукай лицаря" if escort_phase == "go" else "Проведи лицаря до замку"
         if knight != null and knight.state != "waiting":
             goal += "  ·  Лицар: %d/%d" % [knight.hp, knight.max_hp]
     else:
@@ -1697,9 +1699,9 @@ func _refresh_hud() -> void:
             var wk := int(GameState.weapon_kills.get(sid, 0))
             var nxt := Weapons.mastery_next_kills(wk, sid)
             if nxt < 0:
-                sub = "майстр. %d · МАКС" % GameState.weapon_mastery(sid)
+                sub = "вправність %d · МАКС" % GameState.weapon_mastery(sid)
             else:
-                sub = "майстр. %d · %d/%d" % [GameState.weapon_mastery(sid), wk, nxt]
+                sub = "вправність %d · %d/%d" % [GameState.weapon_mastery(sid), wk, nxt]
         entries.append({"id": sid, "n": n, "text": "%s  ур.%d" % [String(w["name"]), player.weapon_level(sid)], "sub": sub, "cur": cur})
     var sig := str(entries)
     if sig != weapons_sig:
@@ -1714,9 +1716,9 @@ const MSG_KINDS := {
     "wave": {"tag": "ХВИЛЯ", "col": Color(1.0, 0.8, 0.35)},
     "horde": {"tag": "ОРДА", "col": Color(1.0, 0.5, 0.2)},
     "boss": {"tag": "ВАТАЖОК", "col": Color(0.95, 0.3, 0.3)},
-    "danger": {"tag": "НЕБЕЗПЕКА", "col": Color(1.0, 0.42, 0.15)},
-    "ally": {"tag": "ВІСТІ", "col": Color(0.55, 0.8, 1.0)},
-    "quest": {"tag": "ЗАВДАННЯ", "col": Color(0.6, 0.9, 0.55)},
+    "danger": {"tag": "ЛИХО", "col": Color(1.0, 0.42, 0.15)},
+    "ally": {"tag": "ВІСТКА", "col": Color(0.55, 0.8, 1.0)},
+    "quest": {"tag": "НАКАЗ", "col": Color(0.6, 0.9, 0.55)},
     "info": {"tag": "", "col": Color(0.85, 0.78, 0.65)},
 }
 var msg_panel: PanelContainer
@@ -1784,7 +1786,7 @@ func _build_message_ui() -> void:
 
 func _msg_kind(text: String) -> String:
     var l := text.to_lower()
-    for k in ["кислот", "полум'я лиже", "вулкан", "згорів", "мури пали"]:
+    for k in ["кислот", "полум’я лиже", "вулкан", "згорів", "мури пали"]:
         if l.find(k) >= 0:
             return "danger"
     if l.begins_with("командор"):
