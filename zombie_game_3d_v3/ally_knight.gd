@@ -56,60 +56,116 @@ func _ready() -> void:
         tag.position = Vector3(0.0, 2.55, 0.0)
         add_child(tag)
 
+func _sph(parent: Node3D, r: float, color: Color, pos: Vector3, scl: Vector3 = Vector3.ONE, rough: float = 0.4) -> MeshInstance3D:
+    var s := SphereMesh.new()
+    s.radius = r
+    s.height = r * 2.0
+    s.radial_segments = 20
+    s.rings = 10
+    var mi := Util.add_mesh(parent, s, color, pos, Vector3.ZERO, rough)
+    mi.scale = scl
+    return mi
+
+func _cyl(parent: Node3D, top: float, bot: float, h: float, color: Color, pos: Vector3, rot: Vector3 = Vector3.ZERO, rough: float = 0.4) -> MeshInstance3D:
+    var c := CylinderMesh.new()
+    c.top_radius = top
+    c.bottom_radius = bot
+    c.height = h
+    c.radial_segments = 16
+    c.rings = 1
+    return Util.add_mesh(parent, c, color, pos, rot, rough)
+
 func _build() -> void:
     var skin := Color(0.8, 0.62, 0.48)
-    var plate := Color(0.58, 0.6, 0.64)
+    var plate := Color(0.6, 0.62, 0.67)
     var boot := Color(0.2, 0.13, 0.08)
-    var steel := Color(0.72, 0.74, 0.78)
+    var steel := Color(0.74, 0.76, 0.8)
     var gold := Color(0.85, 0.7, 0.25)
+    var leather := Color(0.27, 0.17, 0.09)
     var trim := gold if commander else Color(0.7, 0.7, 0.74)
 
     leg_l = _limb(Vector3(-0.14, 0.9, 0.0), Vector3(0.22, 0.9, 0.24), Color(0.4, 0.42, 0.46))
     leg_r = _limb(Vector3(0.14, 0.9, 0.0), Vector3(0.22, 0.9, 0.24), Color(0.4, 0.42, 0.46))
-    Util.add_mesh(leg_l, Util.box(Vector3(0.26, 0.22, 0.36)), boot, Vector3(0, -0.84, -0.05))
-    Util.add_mesh(leg_r, Util.box(Vector3(0.26, 0.22, 0.36)), boot, Vector3(0, -0.84, -0.05))
+    for lg in [leg_l, leg_r]:
+        var l: Node3D = lg
+        Util.add_mesh(l, Util.box(Vector3(0.26, 0.2, 0.36)), boot, Vector3(0, -0.84, -0.05))
+        _sph(l, 0.12, boot, Vector3(0, -0.84, -0.22), Vector3(1.1, 0.6, 1.0), 0.7)
+        _sph(l, 0.15, plate, Vector3(0, -0.46, -0.08), Vector3(1.0, 0.85, 0.8))                  # наколінник
+        Util.add_mesh(l, Util.box(Vector3(0.2, 0.34, 0.05)), plate, Vector3(0, -0.66, -0.12), Vector3.ZERO, 0.35)   # набедренник
+        Util.add_mesh(l, Util.box(Vector3(0.22, 0.3, 0.06)), plate, Vector3(0, -0.2, -0.12), Vector3.ZERO, 0.35)
 
     torso = Node3D.new()
     torso.position = Vector3(0, 1.2, 0)
     add_child(torso)
-    Util.add_mesh(torso, Util.box(Vector3(0.6, 0.66, 0.34)), plate, Vector3.ZERO, Vector3.ZERO, 0.4)
+    Util.add_mesh(torso, Util.box(Vector3(0.6, 0.66, 0.34)), plate, Vector3.ZERO, Vector3.ZERO, 0.38)
+    _sph(torso, 0.34, plate, Vector3(0, 0.3, -0.02), Vector3(1.0, 0.5, 0.6))                          # виступ нагрудника / лінія плечей
     Util.add_mesh(torso, Util.box(Vector3(0.5, 0.52, 0.37)), tabard, Vector3(0, -0.06, 0))
     Util.add_mesh(torso, Util.box(Vector3(0.12, 0.54, 0.38)), trim, Vector3(0, -0.06, 0))
-    Util.add_mesh(torso, Util.box(Vector3(0.64, 0.08, 0.38)), Color(0.25, 0.15, 0.08), Vector3(0, -0.32, 0))
-    # наплічники
-    Util.add_mesh(torso, Util.sphere(0.17), plate, Vector3(-0.36, 0.28, 0), Vector3.ZERO, 0.4)
-    Util.add_mesh(torso, Util.sphere(0.17), plate, Vector3(0.36, 0.28, 0), Vector3.ZERO, 0.4)
-    if commander:
-        # плащ
-        var cape := Util.add_mesh(torso, Util.box(Vector3(0.62, 0.95, 0.05)), Color(0.5, 0.1, 0.1), Vector3(0, -0.3, 0.22))
-        cape.rotation_degrees.x = -6.0
+    Util.add_mesh(torso, Util.box(Vector3(0.62, 0.08, 0.38)), leather, Vector3(0, -0.32, 0))
+    Util.add_mesh(torso, Util.box(Vector3(0.12, 0.1, 0.03)), gold, Vector3(0, -0.32, -0.2), Vector3.ZERO, 0.3)
+    # набедрена спідниця з пластин і горжет
+    for k in range(3):
+        var tx := -0.2 + 0.2 * float(k)
+        Util.add_mesh(torso, Util.box(Vector3(0.19, 0.28, 0.04)), plate.darkened(0.05), Vector3(tx, -0.5, -0.19), Vector3(-8, 0, 0), 0.38)
+    _cyl(torso, 0.15, 0.2, 0.1, steel, Vector3(0, 0.36, 0))
+    # наплічники з накладками (два яруси)
+    for sd in [-1.0, 1.0]:
+        var sx: float = sd
+        _sph(torso, 0.19, plate, Vector3(sx * 0.37, 0.28, 0), Vector3(1.0, 0.75, 1.1))
+        _sph(torso, 0.16, steel, Vector3(sx * 0.41, 0.2, 0), Vector3(1.0, 0.6, 1.0))
+        if commander:
+            _cyl(torso, 0.0, 0.05, 0.2, gold, Vector3(sx * 0.4, 0.46, 0), Vector3(0, 0, -sx * 20.0), 0.3)
+    # плащ: і командир, і рядові лицарі мають короткий плащ; у командира — довгий червоний
+    var cape_col := Color(0.5, 0.1, 0.1) if commander else tabard.darkened(0.3)
+    var cape_len := 0.95 if commander else 0.55
+    var cape := Util.add_mesh(torso, Util.box(Vector3(0.62, cape_len, 0.05)), cape_col, Vector3(0, 0.2 - cape_len * 0.5, 0.22))
+    cape.rotation_degrees.x = -6.0
 
     head = Node3D.new()
     head.position = Vector3(0, 1.72, 0)
     add_child(head)
-    Util.add_mesh(head, Util.sphere(0.17), skin, Vector3.ZERO)
-    var helm := Util.add_mesh(head, Util.sphere(0.23), steel, Vector3(0, 0.03, 0.0), Vector3.ZERO, 0.35)
-    helm.scale = Vector3(1.0, 0.95, 1.0)
+    _sph(head, 0.17, skin, Vector3.ZERO, Vector3.ONE, 0.75)
+    _sph(head, 0.23, steel, Vector3(0, 0.03, 0.0), Vector3(1.0, 0.95, 1.0), 0.32)
+    _cyl(head, 0.235, 0.235, 0.035, plate, Vector3(0, 0.07, 0.0))                                    # обідок шолома
     Util.add_mesh(head, Util.box(Vector3(0.3, 0.05, 0.05)), Color(0.05, 0.05, 0.06), Vector3(0, 0.02, -0.21))   # прорізь забрала
     Util.add_mesh(head, Util.box(Vector3(0.05, 0.2, 0.05)), steel, Vector3(0, -0.03, -0.22))
+    for k in range(3):
+        Util.add_mesh(head, Util.box(Vector3(0.025, 0.03, 0.03)), Color(0.05, 0.05, 0.06), Vector3(0.07 + 0.045 * float(k), -0.08, -0.215))
+        Util.add_mesh(head, Util.box(Vector3(0.025, 0.03, 0.03)), Color(0.05, 0.05, 0.06), Vector3(-0.07 - 0.045 * float(k), -0.08, -0.215))
     var plume_col := Color(0.85, 0.7, 0.25) if commander else Color(0.7, 0.12, 0.12)
-    var plume := Util.add_mesh(head, Util.box(Vector3(0.06, 0.22, 0.34)), plume_col, Vector3(0, 0.3, 0.02))
-    plume.rotation_degrees.x = 12.0
+    Util.add_mesh(head, Util.box(Vector3(0.05, 0.05, 0.4)), steel, Vector3(0, 0.25, 0.0))             # гребінь
+    var plume := Util.add_mesh(head, Util.box(Vector3(0.07, 0.26, 0.4)), plume_col, Vector3(0, 0.36, 0.06))
+    plume.rotation_degrees.x = 14.0
+    if commander:
+        var plume2 := Util.add_mesh(head, Util.box(Vector3(0.06, 0.2, 0.3)), plume_col.lightened(0.2), Vector3(0, 0.34, 0.26))
+        plume2.rotation_degrees.x = 40.0
 
     arm_l = _limb(Vector3(-0.4, 1.45, 0.0), Vector3(0.15, 0.62, 0.15), plate)
     arm_r = _limb(Vector3(0.4, 1.45, 0.0), Vector3(0.15, 0.62, 0.15), plate)
-    Util.add_mesh(arm_l, Util.sphere(0.09), steel, Vector3(0, -0.64, 0))
-    Util.add_mesh(arm_r, Util.sphere(0.09), steel, Vector3(0, -0.64, 0))
+    for am in [arm_l, arm_r]:
+        var a: Node3D = am
+        _sph(a, 0.095, steel, Vector3(0, -0.64, 0), Vector3.ONE, 0.35)                            # рукавиця
+        _sph(a, 0.11, steel, Vector3(0, -0.32, -0.02), Vector3(1.0, 0.8, 1.0))                    # налокітник
+        _cyl(a, 0.1, 0.09, 0.16, steel, Vector3(0, -0.52, 0))                                     # наруч
 
-    # щит із гербом на лівій руці
-    var shield := Util.add_mesh(arm_l, Util.box(Vector3(0.5, 0.7, 0.07)), tabard.lightened(0.1), Vector3(-0.1, -0.42, -0.16))
-    Util.add_mesh(arm_l, Util.box(Vector3(0.1, 0.62, 0.09)), gold, Vector3(-0.1, -0.42, -0.16))
-    Util.add_mesh(arm_l, Util.box(Vector3(0.4, 0.1, 0.09)), gold, Vector3(-0.1, -0.35, -0.16))
-    shield.rotation_degrees.y = 12.0
+    # геральдичний щит-«кайт» на лівій руці: кайма, хрест, умбон
+    var shield := Node3D.new()
+    shield.position = Vector3(-0.1, -0.42, -0.16)
+    shield.rotation_degrees = Vector3(0, 12, 0)
+    arm_l.add_child(shield)
+    Util.add_mesh(shield, Util.box(Vector3(0.5, 0.7, 0.05)), steel, Vector3.ZERO, Vector3.ZERO, 0.35)
+    Util.add_mesh(shield, Util.box(Vector3(0.43, 0.63, 0.06)), tabard.lightened(0.1), Vector3(0, 0, -0.005), Vector3.ZERO, 0.7)
+    Util.add_mesh(shield, Util.box(Vector3(0.1, 0.62, 0.07)), gold, Vector3(0, 0, -0.01), Vector3.ZERO, 0.4)
+    Util.add_mesh(shield, Util.box(Vector3(0.4, 0.1, 0.07)), gold, Vector3(0, 0.08, -0.01), Vector3.ZERO, 0.4)
+    _sph(shield, 0.08, steel, Vector3(0, 0.08, -0.04), Vector3(1, 1, 0.6), 0.3)
+    Util.add_mesh(shield, Util.box(Vector3(0.14, 0.14, 0.01)), tabard.lightened(0.5), Vector3(0, -0.22, -0.035))
 
-    # меч у правій руці
-    Util.add_mesh(arm_r, Util.box(Vector3(0.08, 1.05, 0.03)), steel, Vector3(0, -1.2, 0), Vector3.ZERO, 0.3)
-    Util.add_mesh(arm_r, Util.box(Vector3(0.3, 0.06, 0.06)), gold, Vector3(0, -0.7, 0))
+    # меч у правій руці: лезо з долом, хрестовина, ефес, навершя
+    Util.add_mesh(arm_r, Util.box(Vector3(0.08, 0.95, 0.03)), steel, Vector3(0, -1.17, 0), Vector3.ZERO, 0.28)
+    Util.add_mesh(arm_r, Util.box(Vector3(0.03, 0.85, 0.038)), Color(0.5, 0.52, 0.58), Vector3(0, -1.17, 0), Vector3.ZERO, 0.3)
+    _cyl(arm_r, 0.0, 0.04, 0.12, steel, Vector3(0, -1.69, 0), Vector3(180, 0, 0), 0.28)
+    Util.add_mesh(arm_r, Util.box(Vector3(0.34, 0.06, 0.07)), gold, Vector3(0, -0.7, 0), Vector3.ZERO, 0.3)
+    _sph(arm_r, 0.05, gold, Vector3(0, -0.4, 0), Vector3.ONE, 0.3)
 
 func _limb(pos: Vector3, size: Vector3, color: Color) -> Node3D:
     var n := Node3D.new()
