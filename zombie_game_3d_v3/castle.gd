@@ -39,17 +39,17 @@ static func inside_rect(p: Vector3, margin: float = 2.5) -> bool:
 func _ready() -> void:
     stone_mat = StandardMaterial3D.new()
     stone_mat.albedo_texture = _brick_texture()
-    stone_mat.albedo_color = Color(0.82, 0.8, 0.78)
+    stone_mat.albedo_color = Color(1.0, 0.97, 0.94)
     stone_mat.uv1_triplanar = true
     stone_mat.uv1_world_triplanar = true
-    stone_mat.uv1_scale = Vector3(0.45, 0.45, 0.45)
+    stone_mat.uv1_scale = Vector3(0.28, 0.28, 0.28)
     stone_mat.roughness = 0.95
     dark_mat = StandardMaterial3D.new()
     dark_mat.albedo_texture = stone_mat.albedo_texture
-    dark_mat.albedo_color = Color(0.6, 0.58, 0.56)
+    dark_mat.albedo_color = Color(0.72, 0.7, 0.68)
     dark_mat.uv1_triplanar = true
     dark_mat.uv1_world_triplanar = true
-    dark_mat.uv1_scale = Vector3(0.45, 0.45, 0.45)
+    dark_mat.uv1_scale = Vector3(0.28, 0.28, 0.28)
     dark_mat.roughness = 0.95
     wood_mat = Util.mat(Color(0.33, 0.2, 0.1), 0.9)
 
@@ -62,6 +62,9 @@ func _ready() -> void:
     _build_towers()
     _build_gate()
     _build_decor()
+    _build_wall_details()
+    _build_props()
+    _build_floor_decals()
     _spawn_soldiers()
 
 # ---------- Будівництво ----------
@@ -123,14 +126,11 @@ func _build_towers() -> void:
             _box(p + Vector3(0, TOWER_H * 0.5, 0), Vector3(TOWER, TOWER_H, TOWER), stone_mat)
             # пояс і зубці
             _box(p + Vector3(0, TOWER_H - 0.15, 0), Vector3(TOWER + 0.4, 0.3, TOWER + 0.4), dark_mat, false)
-            for k in range(8):
-                var a := TAU * float(k) / 8.0
-                var off := Vector3(cos(a), 0.0, sin(a)) * (TOWER * 0.5 + 0.05)
-                _box(p + off + Vector3(0, TOWER_H + 0.3, 0), Vector3(0.7, 0.6, 0.7), dark_mat, false)
-            # прапор
-            var pole := Util.add_mesh(self, Util.cylinder(0.05, 0.05, 2.4), Color(0.3, 0.2, 0.1), p + Vector3(0, TOWER_H + 1.2, 0))
+            _tower_roof(p)
+            # прапор на шпилі
+            var pole := Util.add_mesh(self, Util.cylinder(0.05, 0.05, 1.8), Color(0.3, 0.2, 0.1), p + Vector3(0, TOWER_H + 3.4, 0))
             pole.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-            var flag := Util.add_mesh(self, Util.box(Vector3(1.1, 0.7, 0.05)), Color(0.15, 0.26, 0.58), p + Vector3(0.6, TOWER_H + 1.85, 0))
+            var flag := Util.add_mesh(self, Util.box(Vector3(1.1, 0.7, 0.05)), Color(0.15, 0.26, 0.58), p + Vector3(0.6, TOWER_H + 3.9, 0))
             flag.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
     # ліхтарі на вежах теж горять
     for sx in [-1.0, 1.0]:
@@ -163,6 +163,8 @@ func _build_gate() -> void:
     # стулки: петлі по краях проходу
     door_l = _make_door(-GATE_W * 0.5, 1.0)
     door_r = _make_door(GATE_W * 0.5, -1.0)
+    _gate_studs(door_l, 1.0)
+    _gate_studs(door_r, -1.0)
 
     # смолоскипи біля воріт зсередини й зовні
     for sx in [-1.0, 1.0]:
@@ -323,21 +325,252 @@ func _animate_doors(open: bool) -> void:
 
 # ---------- Текстура цегли ----------
 func _brick_texture() -> ImageTexture:
-    var n := 128
+    var n := 256
     var img := Image.create_empty(n, n, false, Image.FORMAT_RGBA8)
-    img.fill(Color(0.18, 0.17, 0.16))
+    img.fill(Color(0.2, 0.19, 0.18))
     var rng := RandomNumberGenerator.new()
     rng.seed = 777
-    var bh := 16
-    var bw := 32
+    var noise := FastNoiseLite.new()
+    noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+    noise.seed = 31
+    noise.frequency = 0.09
+    noise.fractal_octaves = 3
+    var bh := 32
+    var bw := 64
     for row in range(n / bh):
         var xoff := 0 if row % 2 == 0 else bw / 2
         for col in range(n / bw + 1):
-            var s := 0.42 + rng.randf() * 0.14
+            var s := 0.4 + rng.randf() * 0.18
+            var warm := rng.randf_range(-0.05, 0.05)
             var x0 := col * bw + xoff
-            for y in range(1, bh - 1):
-                for x in range(1, bw - 1):
-                    var k := 0.93 + rng.randf() * 0.14
-                    img.set_pixel((x0 + x) % n, row * bh + y, Color(s * k, s * k * 0.97, s * k * 0.92, 1.0))
+            for y in range(2, bh - 2):
+                # фаска: верх світліший, низ темніший
+                var bevel := 1.0 + (0.5 - float(y) / float(bh)) * 0.25
+                for x in range(2, bw - 2):
+                    var px := (x0 + x) % n
+                    var py := row * bh + y
+                    var edge := minf(minf(float(x), float(bw - x)), minf(float(y), float(bh - y)))
+                    var k := 0.9 + noise.get_noise_2d(float(px), float(py)) * 0.22 + rng.randf() * 0.06
+                    k *= bevel * clampf(0.82 + edge * 0.06, 0.82, 1.0)
+                    img.set_pixel(px, py, Color(s * k * (1.0 + warm), s * k * 0.97, s * k * (0.92 - warm), 1.0))
     img.generate_mipmaps()
     return ImageTexture.create_from_image(img)
+
+# ---------- Додаткові деталі замку ----------
+# Конічні дахи веж замість голих зубців: червоно-коричнева черепиця, флюгер-прапор на шпилі.
+func _tower_roof(p: Vector3) -> void:
+    var roof_mat := Util.mat(Color(0.5, 0.17, 0.12), 0.8)
+    var cone := CylinderMesh.new()
+    cone.top_radius = 0.0
+    cone.bottom_radius = TOWER * 0.88
+    cone.height = 2.6
+    cone.radial_segments = 4
+    cone.rings = 1
+    var mi := MeshInstance3D.new()
+    mi.mesh = cone
+    mi.material_override = roof_mat
+    mi.position = p + Vector3(0, TOWER_H + 1.3, 0)
+    mi.rotation_degrees.y = 45.0
+    add_child(mi)
+    var trim := Util.add_mesh(self, Util.box(Vector3(TOWER + 0.5, 0.18, TOWER + 0.5)), Color(0.26, 0.2, 0.16), p + Vector3(0, TOWER_H + 0.05, 0))
+    trim.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+    # вузька бійниця на кожній грані
+    for k in range(4):
+        var a := TAU * float(k) / 4.0
+        var d := Vector3(cos(a), 0.0, sin(a))
+        var slit := Util.add_mesh(self, Util.box(Vector3(0.12, 0.8, 0.12)), Color(0.02, 0.02, 0.03), p + d * (TOWER * 0.5 + 0.02) + Vector3(0, TOWER_H * 0.65, 0))
+        slit.rotation.y = -a
+        slit.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+# Настінний смолоскип: кронштейн, вогник і (за потреби) тепле світло.
+func _wall_torch(pos: Vector3, yaw: float, with_light: bool) -> void:
+    var n := Node3D.new()
+    n.position = pos
+    n.rotation.y = yaw
+    add_child(n)
+    var iron := Color(0.12, 0.12, 0.13)
+    Util.add_mesh(n, Util.box(Vector3(0.1, 0.1, 0.5)), iron, Vector3(0, 0, 0.25), Vector3.ZERO, 0.5)
+    Util.add_mesh(n, Util.cylinder(0.08, 0.05, 0.5), Color(0.35, 0.22, 0.1), Vector3(0, 0.2, 0.5))
+    var fl := Util.add_mesh(n, Util.sphere(0.15), Color(1.0, 0.55, 0.12), Vector3(0, 0.55, 0.5), Vector3.ZERO, 0.4, 5.0)
+    fl.scale = Vector3(1.0, 1.5, 1.0)
+    fl.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+    if with_light:
+        var l: OmniLight3D = FlickerLight.new()
+        l.light_color = Color(1.0, 0.6, 0.28)
+        l.light_energy = 1.5
+        l.omni_range = 7.5
+        l.position = Vector3(0, 0.7, 0.7)
+        n.add_child(l)
+
+# Полотнище на внутрішній грані муру. yaw повертає його лицем у двір.
+func _banner(pos: Vector3, yaw: float, col: Color) -> void:
+    var n := Node3D.new()
+    n.position = pos
+    n.rotation.y = yaw
+    add_child(n)
+    Util.add_mesh(n, Util.cylinder(0.04, 0.04, 1.3), Color(0.3, 0.2, 0.1), Vector3(0, 0.95, 0.05), Vector3(0, 0, 90))
+    var cloth := Util.add_mesh(n, Util.box(Vector3(1.0, 1.9, 0.04)), col, Vector3(0, 0.0, 0.05), Vector3.ZERO, 0.95)
+    cloth.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+    var tip := Util.add_mesh(n, Util.box(Vector3(0.5, 0.5, 0.04)), col, Vector3(0, -1.1, 0.05), Vector3(0, 0, 45), 0.95)
+    tip.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+    Util.add_mesh(n, Util.box(Vector3(0.36, 0.5, 0.045)), Color(0.9, 0.78, 0.3), Vector3(0, 0.15, 0.065), Vector3.ZERO, 0.6)
+
+func _build_wall_details() -> void:
+    var inner := HALF - WALL_T * 0.5 - 0.02      # внутрішня грань муру
+    var red := Color(0.55, 0.1, 0.1)
+    var blue := Color(0.15, 0.26, 0.58)
+    # південний мур: погляд у -Z (yaw=PI)
+    _banner(Vector3(-8.0, 2.0, inner), PI, red)
+    _banner(Vector3(8.0, 2.0, inner), PI, blue)
+    _wall_torch(Vector3(0.0, 2.2, inner), PI, true)
+    # західний (дивиться на +X) і східний (на -X)
+    _banner(Vector3(-inner, 2.0, -6.0), PI * 0.5, blue)
+    _banner(Vector3(-inner, 2.0, 9.0), PI * 0.5, red)
+    _banner(Vector3(inner, 2.0, -7.0), -PI * 0.5, red)
+    _banner(Vector3(inner, 2.0, 6.5), -PI * 0.5, blue)
+    _wall_torch(Vector3(-inner, 2.2, -12.0), PI * 0.5, false)
+    _wall_torch(Vector3(-inner, 2.2, 6.0), PI * 0.5, true)
+    _wall_torch(Vector3(inner, 2.2, -12.0), -PI * 0.5, false)
+    _wall_torch(Vector3(inner, 2.2, 8.0), -PI * 0.5, true)
+    # контрфорси вздовж муру
+    for z in [-8.0, 0.0, 8.0]:
+        for sx in [-1.0, 1.0]:
+            var b := _box(Vector3(float(sx) * (inner - 0.25), 1.6, z + 3.0), Vector3(0.5, 3.2, 0.6), dark_mat, false)
+            b.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+    # цоколь знизу муру: ширший нижній пояс
+    for sx in [-1.0, 1.0]:
+        _box(Vector3(float(sx) * (HALF - 0.1), 0.25, 0.0), Vector3(WALL_T + 0.3, 0.5, 2.0 * (HALF - TOWER * 0.5)), dark_mat, false)
+    _box(Vector3(0.0, 0.25, HALF - 0.1), Vector3(2.0 * (HALF - TOWER * 0.5), 0.5, WALL_T + 0.3), dark_mat, false)
+
+# Залізні заклепки й кільця на стулках воріт.
+func _gate_studs(pivot: Node3D, dir: float) -> void:
+    var w := GATE_W * 0.5
+    var iron := Util.mat(Color(0.2, 0.2, 0.22), 0.45)
+    var sm := SphereMesh.new()
+    sm.radius = 0.05
+    sm.height = 0.1
+    sm.radial_segments = 6
+    sm.rings = 3
+    for i in range(6):
+        for y in [0.35, 1.1, 1.9, 2.65]:
+            for side in [-1.0, 1.0]:
+                var s := MeshInstance3D.new()
+                s.mesh = sm
+                s.material_override = iron
+                s.position = Vector3(dir * (0.25 + 0.5 * float(i)), float(y), float(side) * 0.17)
+                pivot.add_child(s)
+    var ring := MeshInstance3D.new()
+    var tm := TorusMesh.new()
+    tm.inner_radius = 0.12
+    tm.outer_radius = 0.18
+    tm.rings = 12
+    tm.ring_segments = 6
+    ring.mesh = tm
+    ring.material_override = iron
+    ring.position = Vector3(dir * (w - 0.35), 1.5, 0.19)
+    ring.rotation_degrees.x = 90.0
+    pivot.add_child(ring)
+
+# Плями бруду й різнокольорові плити на підлозі двору (над текстурою площі, нижче за кров).
+func _build_floor_decals() -> void:
+    var rng := RandomNumberGenerator.new()
+    rng.seed = 4242
+    var quad := PlaneMesh.new()
+    quad.size = Vector2(1.0, 1.0)
+    var inner := HALF - 1.0
+    # стежка від воріт до центру: світліші плити
+    var path_mat := Util.mat(Color(0.62, 0.58, 0.5, 0.35), 1.0)
+    path_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+    for i in range(14):
+        var z := -inner + float(i) * 1.1
+        var w := 3.6 + rng.randf() * 0.8
+        _decal(quad, Vector3(rng.randf_range(-0.3, 0.3), 0.034, z), Vector2(w, 1.0), rng.randf_range(-0.03, 0.03), path_mat)
+    # випадкові темні та світлі плити
+    var mats: Array[StandardMaterial3D] = []
+    for c in [Color(0.12, 0.1, 0.09, 0.28), Color(0.7, 0.66, 0.6, 0.18), Color(0.25, 0.3, 0.2, 0.22)]:
+        var mm := Util.mat(c, 1.0)
+        mm.cull_mode = BaseMaterial3D.CULL_DISABLED
+        mats.append(mm)
+    for i in range(60):
+        var p := Vector3(rng.randf_range(-inner, inner), 0.036, rng.randf_range(-inner, inner))
+        var s := Vector2(rng.randf_range(0.8, 2.0), rng.randf_range(0.8, 2.0))
+        _decal(quad, p, s, rng.randf() * TAU, mats[rng.randi() % mats.size()])
+    # брудні смуги вздовж стін
+    var dirt := Util.mat(Color(0.1, 0.08, 0.06, 0.35), 1.0)
+    dirt.cull_mode = BaseMaterial3D.CULL_DISABLED
+    var edge := HALF - WALL_T * 0.5
+    _decal(quad, Vector3(0, 0.038, edge - 0.5), Vector2(2.0 * edge, 1.0), 0.0, dirt)
+    _decal(quad, Vector3(0, 0.038, -edge + 0.5), Vector2(2.0 * edge, 1.0), 0.0, dirt)
+    _decal(quad, Vector3(edge - 0.5, 0.038, 0), Vector2(1.0, 2.0 * edge), 0.0, dirt)
+    _decal(quad, Vector3(-edge + 0.5, 0.038, 0), Vector2(1.0, 2.0 * edge), 0.0, dirt)
+
+func _decal(mesh: Mesh, pos: Vector3, size: Vector2, yaw: float, mat: Material) -> void:
+    var mi := MeshInstance3D.new()
+    mi.mesh = mesh
+    mi.material_override = mat
+    mi.position = pos
+    mi.rotation.y = yaw
+    mi.scale = Vector3(size.x, 1.0, size.y)
+    mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+    add_child(mi)
+
+# Пропи вздовж стін, що не заважають проходу: ящики, бочки, стійка зі зброєю, жаровня, сінні тюки.
+func _build_props() -> void:
+    var wood := Color(0.42, 0.28, 0.14)
+    var dark_wood := Color(0.3, 0.19, 0.1)
+    var iron := Color(0.16, 0.16, 0.18)
+    # східна стійка зі списами (дзеркально до західної)
+    var rack := Node3D.new()
+    rack.position = Vector3(14.4, 0.0, -2.0)
+    add_child(rack)
+    Util.add_mesh(rack, Util.box(Vector3(0.2, 1.2, 2.6)), wood, Vector3(0, 0.6, 0))
+    for i in range(4):
+        Util.add_mesh(rack, Util.cylinder(0.025, 0.025, 1.9), Color(0.45, 0.32, 0.18), Vector3(-0.25, 1.0, -0.9 + 0.55 * float(i)), Vector3(0, 0, 8))
+        Util.add_mesh(rack, Util.cylinder(0.0, 0.05, 0.2), Color(0.62, 0.64, 0.68), Vector3(-0.13, 1.98, -0.9 + 0.55 * float(i)), Vector3(0, 0, 8), 0.4)
+    for i in range(3):
+        Util.add_mesh(rack, Util.cylinder(0.3, 0.3, 0.06), Color(0.55, 0.12, 0.1), Vector3(-0.25, 0.9, -0.8 + 0.8 * float(i)), Vector3(0, 0, 90))
+    _col_static(Vector3(14.4, 0.0, -2.0), Vector3(0.8, 1.2, 2.6))
+    # ящики й бочки в південно-західному куті
+    _crate(Vector3(-14.0, 0.0, 14.0), 1.0, 0.2, wood)
+    _crate(Vector3(-12.7, 0.0, 14.2), 0.8, -0.3, dark_wood)
+    _crate(Vector3(-13.8, 1.0, 14.0), 0.7, 0.6, wood, false)
+    _barrel(Vector3(-14.2, 0.0, 12.6), wood, iron)
+    _col_static(Vector3(-13.4, 0.0, 13.9), Vector3(3.0, 1.0, 1.6))
+    # бочки й тюки в північно-східному куті
+    _barrel(Vector3(14.0, 0.0, -13.4), wood, iron)
+    _barrel(Vector3(14.1, 0.0, -11.9), dark_wood, iron)
+    _barrel(Vector3(12.7, 0.0, -13.7), wood, iron)
+    _col_static(Vector3(13.6, 0.0, -12.9), Vector3(2.4, 1.0, 2.4))
+    # сінні тюки біля південної стіни
+    for i in range(2):
+        var hb := Util.add_mesh(self, Util.box(Vector3(1.3, 0.7, 0.8)), Color(0.72, 0.6, 0.28), Vector3(5.0 + 1.4 * float(i), 0.35 + 0.0, 14.7), Vector3(0, 6.0 * float(i), 0), 1.0)
+        hb.scale = Vector3(1.0, 1.0, 1.0)
+    _col_static(Vector3(5.7, 0.0, 14.7), Vector3(2.8, 0.7, 0.9))
+    # жаровня біля східної стіни
+    var br := Node3D.new()
+    br.position = Vector3(14.6, 0.0, 12.0)
+    add_child(br)
+    Util.add_mesh(br, Util.cylinder(0.06, 0.08, 0.9), iron, Vector3(0, 0.45, 0), Vector3.ZERO, 0.5)
+    Util.add_mesh(br, Util.cylinder(0.4, 0.2, 0.25), iron, Vector3(0, 0.95, 0), Vector3.ZERO, 0.5)
+    var fire := Util.add_mesh(br, Util.sphere(0.28), Color(1.0, 0.5, 0.1), Vector3(0, 1.15, 0), Vector3.ZERO, 0.4, 5.0)
+    fire.scale = Vector3(1.0, 1.3, 1.0)
+    fire.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+    var l: OmniLight3D = FlickerLight.new()
+    l.light_color = Color(1.0, 0.55, 0.25)
+    l.light_energy = 1.6
+    l.omni_range = 8.0
+    l.position = Vector3(0, 1.6, 0)
+    br.add_child(l)
+    _col_static(Vector3(14.6, 0.0, 12.0), Vector3(0.9, 1.2, 0.9))
+
+func _crate(pos: Vector3, s: float, yaw: float, col: Color, collide: bool = false) -> void:
+    var c := Util.add_mesh(self, Util.box(Vector3(s, s, s)), col, pos + Vector3(0, s * 0.5, 0), Vector3(0, rad_to_deg(yaw), 0), 0.9)
+    for sy in [-1.0, 1.0]:
+        var band := Util.add_mesh(c, Util.box(Vector3(s * 1.04, s * 0.1, s * 1.04)), Color(0.2, 0.13, 0.07), Vector3(0, float(sy) * s * 0.4, 0), Vector3.ZERO, 0.9)
+        band.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+func _barrel(pos: Vector3, col: Color, iron: Color) -> void:
+    var b := Util.add_mesh(self, Util.cylinder(0.45, 0.4, 0.9), col, pos + Vector3(0, 0.45, 0), Vector3.ZERO, 0.9)
+    for y in [-0.28, 0.28]:
+        var hoop := Util.add_mesh(b, Util.cylinder(0.47, 0.47, 0.06), iron, Vector3(0, float(y), 0), Vector3.ZERO, 0.5)
+        hoop.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
