@@ -15,9 +15,20 @@ var style := "arrow"
 var hit_ids: Array = []
 var spin := 0.0
 var weapon_id := ""
+var _age := 0.0
+var _life0 := 0.0
+var _y0 := 0.0
+var _arc := 0.0     # висота дуги польоту, м (лише візуально; влучання рахується в площині)
 
 func _ready() -> void:
     rotation.y = atan2(-direction.x, -direction.z)
+    _life0 = maxf(life, 0.01)
+    _y0 = position.y
+    match style:
+        "arrow":
+            _arc = 0.3
+        "knife":
+            _arc = 0.45
     var steel := Color(0.85, 0.87, 0.93)
     match style:
         "arrow":
@@ -45,6 +56,12 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
     position += direction * speed * delta
     life -= delta
+    if _arc > 0.0:
+        # параболічна дуга: злітає й повертається на висоту пострілу; ніс снаряда слідує за траєкторією
+        _age += delta
+        var u := clampf(_age / _life0, 0.0, 1.0)
+        position.y = _y0 + _arc * 4.0 * u * (1.0 - u)
+        rotation.x = atan(_arc * 4.0 * (1.0 - 2.0 * u) / maxf(speed * _life0, 0.01))
     if spin > 0.0:
         rotation.z += spin * delta
     for z in get_tree().get_nodes_in_group("zombies"):
