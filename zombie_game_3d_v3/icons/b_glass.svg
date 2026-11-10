@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="night" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#211b32"/><stop offset="1" stop-color="#0b0a14"/></linearGradient>
+    <linearGradient id="mirror" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#5c5076"/><stop offset="0.55" stop-color="#25233c"/><stop offset="1" stop-color="#8a83a2"/></linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="11" fill="url(#night)" stroke="#6f6189" stroke-width="2"/>
+  <path d="M20 50 V25 Q20 12 32 10 Q44 12 44 25 V50 Z" fill="#11101b" stroke="url(#mirror)" stroke-width="3"/>
+  <path d="M24 46 V25 Q24 16 32 14 Q40 16 40 25 V46 Z" fill="#242239" stroke="#aaa1c2" stroke-width="1"/>
+  <path d="M32 15 L28 25 L34 29 L27 36 L32 45 M28 25 L24 22 M34 29 L39 26 M27 36 L23 40" fill="none" stroke="#d3cee2" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M18 52 H46 M23 56 H41" fill="none" stroke="#80758f" stroke-width="2" stroke-linecap="round"/>
+  <path d="M13 18 L15 15 M49 39 L52 36 M48 16 L50 14" stroke="#b9b0cf" stroke-width="1.5" stroke-linecap="round"/>
+</svg>
