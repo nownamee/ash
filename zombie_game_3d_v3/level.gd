@@ -270,43 +270,94 @@ func _exit_tree() -> void:
 # ---------- Світ ----------
 func _setup_environment() -> void:
     var bio: Dictionary = Biomes.DATA[int(loc["biome"])]
+    var b := int(loc["biome"])
     env = Environment.new()
     env.background_mode = Environment.BG_COLOR
     env.background_color = Color(0.05, 0.06, 0.08)
+    var amb: Color = bio["ambient"]
+    var fog_c: Color = bio["fog"]
     env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-    env.ambient_light_color = bio["ambient"]
-    env.ambient_light_energy = 0.7
-    env.ambient_light_energy = 0.55
+    env.ambient_light_color = amb
+    env.ambient_light_energy = 0.62
     env.fog_enabled = true
-    env.fog_light_color = bio["fog"]
-    env.fog_density = 0.012
+    env.fog_light_color = fog_c
+    env.fog_density = 0.011
     env.fog_aerial_perspective = 0.35
-    # кінематографічне зображення: кіно-тонмеп, затемнення кутів, світіння, приглушені кольори
-    env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-    env.tonemap_exposure = 0.95
+    # м'яка висотна імла біля землі: глибина без важкого об'ємного туману
+    env.fog_height = 0.0
+    env.fog_height_density = 0.035
+    # кіно-тонмеп AgX + контраст: об'єкти краще відділяються від землі
+    env.tonemap_mode = Environment.TONE_MAPPER_AGX
+    env.tonemap_exposure = 1.05
+    env.tonemap_white = 6.0
     env.ssao_enabled = SSAO_ENABLED
-    env.ssao_radius = 1.6
-    env.ssao_intensity = 2.4
+    env.ssao_radius = 1.4
+    env.ssao_intensity = 2.0
+    env.ssao_power = 1.6
     env.glow_enabled = GLOW_ENABLED
-    env.glow_intensity = 0.7
-    env.glow_bloom = 0.05
+    env.glow_intensity = 0.8
+    env.glow_bloom = 0.04
+    env.glow_hdr_threshold = 1.1
+    env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
     env.adjustment_enabled = true
-    env.adjustment_contrast = 1.12
-    env.adjustment_saturation = 0.82
+    env.adjustment_contrast = 1.14
+    env.adjustment_saturation = 1.08
+    # характер біома: тепліший луг, холодний сніг, фіолетове кладовище, червоний вогонь, зелене болото
+    var sun_col := Color(0.78, 0.84, 1.0)
+    var sun_e := 1.0
+    match b:
+        Biomes.MEADOW, Biomes.FOREST:
+            sun_col = Color(1.0, 0.92, 0.76)
+        Biomes.DESERT:
+            sun_col = Color(1.0, 0.86, 0.66)
+            env.adjustment_saturation = 1.0
+        Biomes.SNOW, Biomes.TUNDRA:
+            sun_col = Color(0.74, 0.86, 1.0)
+            sun_e = 1.1
+        Biomes.GRAVEYARD:
+            sun_col = Color(0.72, 0.66, 1.0)
+            sun_e = 0.9
+        Biomes.FIRE:
+            sun_col = Color(1.0, 0.6, 0.42)
+            env.glow_intensity = 1.0
+        Biomes.SWAMP:
+            sun_col = Color(0.74, 1.0, 0.8)
+            sun_e = 0.9
+        Biomes.ASH, Biomes.RUINS, Biomes.CITY:
+            sun_col = Color(0.88, 0.86, 0.92)
     var we := WorldEnvironment.new()
     we.environment = env
     add_child(we)
 
-    # холодне місячне світло замість яскравого сонця
     var sun := DirectionalLight3D.new()
-    sun.rotation_degrees = Vector3(-52.0, -30.0, 0.0)
-    sun.light_color = Color(0.78, 0.84, 1.0)
-    sun.light_energy = 0.85
+    sun.rotation_degrees = Vector3(-48.0, -35.0, 0.0)
+    sun.light_color = sun_col
+    sun.light_energy = sun_e
     sun.shadow_enabled = true
-    sun.shadow_blur = 1.5
+    sun.shadow_blur = 1.2
+    sun.shadow_bias = 0.04
+    sun.shadow_normal_bias = 1.2
     sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+    sun.directional_shadow_split_1 = 0.3
+    sun.directional_shadow_fade_start = 0.85
     sun.directional_shadow_max_distance = SHADOW_DISTANCE
     add_child(sun)
+    _add_vignette()
+
+# Легке затемнення кутів екрана під інтерфейсом.
+func _add_vignette() -> void:
+    var layer := CanvasLayer.new()
+    layer.layer = 0
+    add_child(layer)
+    var rect := ColorRect.new()
+    rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+    rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    var sh := Shader.new()
+    sh.code = "shader_type canvas_item;\nvoid fragment() {\n    vec2 uv = UV - 0.5;\n    float d = dot(uv, uv) * 1.6;\n    COLOR = vec4(0.0, 0.0, 0.0, smoothstep(0.18, 0.85, d) * 0.5);\n}\n"
+    var m := ShaderMaterial.new()
+    m.shader = sh
+    rect.material = m
+    layer.add_child(rect)
 
 # Ліхтар біля гравця: тепле миготливе світло в темряві.
 func _add_player_lamp() -> void:
