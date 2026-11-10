@@ -2,3 +2,4 @@
 .godot/
 *.tmp
 *.import
+__pycache__/
