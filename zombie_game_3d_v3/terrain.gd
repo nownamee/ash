@@ -3807,10 +3807,14 @@ func _add_set(o: Vector2, items: Array, frame_yaw: float, disc_r: float) -> void
 
 # Стежка й майданчики — одна сітка з вершинними кольорами: посередині втоптана земля, до країв — колір землі біому.
 func _tv(st: SurfaceTool, p: Vector2, c: Color) -> void:
+    _tv_y(st, p, c, TRAIL_Y)
+
+# Окремі шари (стежки, майданчики) на трохи різній висоті: інакше їхні перекриття мерехтять смугами (z-fighting).
+func _tv_y(st: SurfaceTool, p: Vector2, c: Color, y: float) -> void:
     st.set_color(c)
     st.set_normal(Vector3.UP)
     st.set_uv(p * GROUND_UV)
-    st.add_vertex(Vector3(p.x, TRAIL_Y, p.y))
+    st.add_vertex(Vector3(p.x, y, p.y))
 
 func _dirt_at(p: Vector2) -> Color:
     var c: Color = TRAIL_COL[biome_at(p.x, p.y)]
@@ -3820,7 +3824,10 @@ func _dirt_at(p: Vector2) -> Color:
 func _build_trail_mesh() -> void:
     var st := SurfaceTool.new()
     st.begin(Mesh.PRIMITIVE_TRIANGLES)
+    var layer := 0
     for tp in _trails:
+        layer += 1
+        var ly := TRAIL_Y + 0.008 * float(layer)
         var pts: PackedVector2Array = tp
         var rows: Array = []     # на кожну точку: [PackedVector2Array(6), PackedColorArray(6)]
         for i in range(pts.size()):
@@ -3851,13 +3858,14 @@ func _build_trail_mesh() -> void:
             var pb: PackedVector2Array = rb[0]
             var cb: PackedColorArray = rb[1]
             for k in range(5):
-                _tv(st, pa[k + 1], ca[k + 1])
-                _tv(st, pa[k], ca[k])
-                _tv(st, pb[k], cb[k])
-                _tv(st, pa[k + 1], ca[k + 1])
-                _tv(st, pb[k], cb[k])
-                _tv(st, pb[k + 1], cb[k + 1])
+                _tv_y(st, pa[k + 1], ca[k + 1], ly)
+                _tv_y(st, pa[k], ca[k], ly)
+                _tv_y(st, pb[k], cb[k], ly)
+                _tv_y(st, pa[k + 1], ca[k + 1], ly)
+                _tv_y(st, pb[k], cb[k], ly)
+                _tv_y(st, pb[k + 1], cb[k + 1], ly)
     # майданчики на розвилці й у пам'ятних місцях: центр — втоптана земля, до краю плавно в колір землі
+    var disc_y := TRAIL_Y + 0.008 * float(layer + 1)
     for ds in _discs:
         var o: Vector2 = ds[0]
         var rad := float(ds[1])
@@ -3878,15 +3886,15 @@ func _build_trail_mesh() -> void:
             var g1 := _ground_color(e1.x, e1.y)
             var mc0 := _ground_color(m0.x, m0.y).lerp(dirt_c, 0.8)
             var mc1 := _ground_color(m1.x, m1.y).lerp(dirt_c, 0.8)
-            _tv(st, o, dirt_c)
-            _tv(st, m0, mc0)
-            _tv(st, m1, mc1)
-            _tv(st, m0, mc0)
-            _tv(st, e0, g0)
-            _tv(st, e1, g1)
-            _tv(st, m0, mc0)
-            _tv(st, e1, g1)
-            _tv(st, m1, mc1)
+            _tv_y(st, o, dirt_c, disc_y)
+            _tv_y(st, m0, mc0, disc_y)
+            _tv_y(st, m1, mc1, disc_y)
+            _tv_y(st, m0, mc0, disc_y)
+            _tv_y(st, e0, g0, disc_y)
+            _tv_y(st, e1, g1, disc_y)
+            _tv_y(st, m0, mc0, disc_y)
+            _tv_y(st, e1, g1, disc_y)
+            _tv_y(st, m1, mc1, disc_y)
     st.generate_tangents()
     var mi := MeshInstance3D.new()
     mi.mesh = st.commit()

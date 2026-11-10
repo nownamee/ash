@@ -285,7 +285,7 @@ func _setup_environment() -> void:
     env.fog_aerial_perspective = 0.35
     # м'яка висотна імла біля землі: глибина без важкого об'ємного туману
     env.fog_height = 0.0
-    env.fog_height_density = 0.035
+    env.fog_height_density = 0.02
     # кіно-тонмеп AgX + контраст: об'єкти краще відділяються від землі
     env.tonemap_mode = Environment.TONE_MAPPER_AGX
     env.tonemap_exposure = 1.05
@@ -318,8 +318,13 @@ func _setup_environment() -> void:
             sun_col = Color(0.72, 0.66, 1.0)
             sun_e = 0.9
         Biomes.FIRE:
-            sun_col = Color(1.0, 0.6, 0.42)
-            env.glow_intensity = 1.0
+            # вогняні поля й так яскраві: менше експозиції й насиченості, щоб полум'я не вигоряло в біле
+            sun_col = Color(1.0, 0.72, 0.58)
+            sun_e = 0.85
+            env.tonemap_exposure = 0.88
+            env.adjustment_saturation = 0.92
+            env.glow_intensity = 0.6
+            env.glow_hdr_threshold = 1.4
         Biomes.SWAMP:
             sun_col = Color(0.74, 1.0, 0.8)
             sun_e = 0.9
