@@ -3,6 +3,8 @@ extends Node3D
 
 const Util = preload("res://util.gd")
 const Target = preload("res://campaign_target.gd")
+const Frames = preload("res://ornate_frame.gd")
+const GameFonts = preload("res://game_fonts.gd")
 const COLORS := {"tide": Color(0.12, 0.66, 0.62), "bells": Color(0.72, 0.56, 0.25), "glass": Color(0.58, 0.32, 0.76), "iron": Color(0.76, 0.30, 0.12)}
 const TITLES := {"tide": "ЧОРНИЙ ПРИПЛИВ", "bells": "ХОР ПОРОЖНІХ ДЗВОНІВ", "glass": "СКЛЯНА НІЧ", "iron": "ЗАЛІЗНИЙ МОР"}
 const TIDE_LOW := 20.0
@@ -55,16 +57,10 @@ func _build_hud() -> void:
     panel.position = Vector2(16, 92)
     panel.custom_minimum_size = Vector2(600, 0)
     panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    var style := StyleBoxFlat.new()
-    style.bg_color = Color(0.025, 0.022, 0.03, 0.92)
-    style.border_color = COLORS[theme].darkened(0.25)
-    style.set_border_width_all(1)
-    style.content_margin_left = 12
-    style.content_margin_right = 12
-    style.content_margin_top = 7
-    style.content_margin_bottom = 7
+    var style := Frames.plate(COLORS[theme])
     panel.add_theme_stylebox_override("panel", style)
     label = Label.new()
+    label.add_theme_font_override("font", GameFonts.body())
     label.add_theme_font_size_override("font_size", 15)
     label.add_theme_color_override("font_color", COLORS[theme].lightened(0.4))
     label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -126,11 +122,11 @@ func _build_tide() -> void:
             _floor(Vector3(x, 0.17, z), Vector2(19, 2.5), Color(0.16, 0.12, 0.075))
     if stage == 2:
         for x in [-10.0, 10.0]:
-            var wreck = _target("drive", Vector3(x, 0, -48), "РОЗБИЙ УЛАМОК")
+            var wreck = _target("drive", Vector3(x, 0, -48), "РОЗБИЙ ЗАТОПЛЕНИЙ ОСТОВ")
             _gate(wreck, Vector2(5, 1.0))
     if stage == 3:
         for pos in [Vector3(-25, 0, -48), Vector3(25, 0, -68), Vector3(0, 0, -84)]:
-            _target("nest", pos, "ОСЕРЕДОК ПОТОПЕЛЬНИКІВ", true)
+            _target("nest", pos, "ГНІЗДО ПОТОПЕЛЬНИКІВ", true)
     if stage == 4:
         hold_ring = _circle(hold_point, 10.0, Color(0.15, 0.65, 0.58, 0.12))
         Util.add_mesh(self, Util.cylinder(1.2, 2.0, 11), Color(0.24, 0.25, 0.24), hold_point + Vector3(0, 5.5, 0))
@@ -144,7 +140,7 @@ func _build_tide() -> void:
 func _build_bells() -> void:
     var positions: Array = [Vector3(0, 0, -48)] if stage == 1 else [Vector3(-25, 0, -48), Vector3(25, 0, -68), Vector3(0, 0, -84)]
     for pos in positions:
-        _target("bell", pos, "ПРОКЛЯТИЙ ДЗВІН" if stage != 4 else "РЕЗОНАТОР", stage < 5)
+        _target("bell", pos, "ПРОКЛЯТИЙ ДЗВІН" if stage != 4 else "ГОЛОС ПРОРВИ", stage < 5)
     if stage == 5:
         for x in [-8.0, 8.0]:
             Util.add_mesh(self, Util.box(Vector3(3, 14, 3)), Color(0.22, 0.21, 0.22), Vector3(x, 7, -88))
@@ -315,7 +311,7 @@ func _update_boss(delta: float) -> void:
         last_boss = boss.get_instance_id()
         if theme == "glass":
             var truth := Label3D.new()
-            truth.text = "СПРАВЖНІЙ"
+            truth.text = "ПРАВДИВИЙ"
             truth.font_size = 46
             truth.modulate = Color(1, 0.8, 0.25)
             truth.position.y = 4.6
@@ -463,29 +459,36 @@ func _refresh_markers() -> void:
     if theme == "tide" and stage == 4:
         level.minimap.goal = hold_point if hold < HOLD_SECONDS else Vector3.ZERO
 
+func _tide_text() -> String:
+    if tide_phase == "ВІДЛИВ":
+        return "ВІДЛИВ"
+    if tide_phase.begins_with("ПРИПЛИВ ЧЕРЕЗ"):
+        return tide_phase.replace("ПРИПЛИВ ЧЕРЕЗ", "ВОДА НАСТУПАЄ ЧЕРЕЗ")
+    return "ПРИПЛИВ ГРЯДЕ"
+
 func _update_hud() -> void:
     var detail := ""
     if level.castle_wait:
-        detail = "Вийди за браму. Жовті ромби — цілі; бий їх своєю зброєю."
+        detail = "Рушай за браму. Жовті ромби — мета твого клинка: розбий їх."
     elif theme == "tide":
-        detail = tide_phase + " · Центральна стежка завжди суха"
+        detail = _tide_text() + " · Серединна стежка завжди суха"
         if stage == 3:
-            detail += "\nОсередки: %d/3 — знищ їх і заверши бій" % (3 - _living_targets().size())
+            detail += "\nГнізда: %d/3 — спали їх і завершуй бій" % (3 - _living_targets().size())
         if stage == 4:
-            detail += "\nУтримуй двір маяка: %d/%d с" % [int(hold), int(HOLD_SECONDS)]
+            detail += "\nТримай двір маяка: %d/%d с" % [int(hold), int(HOLD_SECONDS)]
     elif theme == "bells":
-        detail = "Дзвони: %d · Знищ їх, щоб прибрати хвилі резонансу" % _living_targets().size()
+        detail = "Дзвони: %d · Змовчать вони — вщухне й луна" % _living_targets().size()
     elif theme == "glass":
         if stage == 1:
-            detail = "Слабкі двійники мають світні тріщини. Не дай їм оточити себе."
+            detail = "Слабкі двійники світяться тріщинами. Не дай їм зімкнути коло."
         elif stage == 2:
-            detail = "Розбий скляні пластини, щоб відкрити короткі проходи."
+            detail = "Розбий скляні пластини — відкриються короткі проходи."
         else:
-            detail = "Вузли: %d · Відлуння удару через 1,2 с" % _living_targets().size()
+            detail = "Вузли: %d · Відлуння вдарить за 1,2 с" % _living_targets().size()
     else:
-        detail = ("Преси: 3" if stage == 1 else "Приводи: %d" % _living_targets().size()) + " · Пастки шкодять також мерцям"
+        detail = ("Преси: 3" if stage == 1 else "Приводи: %d" % _living_targets().size()) + " · Пастки дістають і мертвих"
     if not level.castle_wait and not objectives_complete():
-        detail += "\nДля перемоги виконай цілі та здолай усі хвилі."
+        detail += "\nПеремога — коли впадуть цілі й затихнуть усі хвилі."
     label.text = "%s · %d/5\n%s" % [TITLES[theme], stage, detail]
 
 func _flat_distance(a: Vector3, b: Vector3) -> float:
