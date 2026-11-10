@@ -8,6 +8,36 @@ const BlueFire = preload("res://blue_fire.gd")
 static func _b(h: Node3D, size: Vector3, color: Color, pos: Vector3, rot: Vector3 = Vector3.ZERO, rough: float = 0.6, emit: float = 0.0) -> void:
     Util.add_mesh(h, Util.box(size), color, pos, rot, rough, emit)
 
+# Циліндр уздовж Z: fr — радіус переднього (−Z) кінця, br — заднього; zc — центр, y/x — зсув.
+static func _cz(h: Node3D, fr: float, br: float, len: float, color: Color, zc: float, rough: float = 0.5, emit: float = 0.0, y: float = 0.0, x: float = 0.0) -> void:
+    var c := CylinderMesh.new()
+    c.top_radius = fr
+    c.bottom_radius = br
+    c.height = len
+    c.radial_segments = 20
+    c.rings = 1
+    Util.add_mesh(h, c, color, Vector3(x, y, zc), Vector3(-90, 0, 0), rough, emit)
+
+static func _sp(h: Node3D, r: float, color: Color, pos: Vector3, scl: Vector3 = Vector3.ONE, rough: float = 0.4, emit: float = 0.0) -> void:
+    var s := SphereMesh.new()
+    s.radius = r
+    s.height = r * 2.0
+    s.radial_segments = 24
+    s.rings = 12
+    var mi := Util.add_mesh(h, s, color, pos, Vector3.ZERO, rough, emit)
+    mi.scale = scl
+
+# Двосхила гостра полоса меча: центральне ребро + зужений кінчик (вістря на −Z).
+static func _blade(h: Node3D, width: float, z0: float, z1: float, color: Color, rib: Color) -> void:
+    var len := absf(z1 - z0)
+    var body := len * 0.84
+    var zb := z0 - body * 0.5
+    _b(h, Vector3(width, 0.035, body), color, Vector3(0, 0, zb), Vector3.ZERO, 0.25)
+    _b(h, Vector3(width * 0.28, 0.05, body), rib, Vector3(0, 0, zb), Vector3.ZERO, 0.3)
+    var tip := PrismMesh.new()
+    tip.size = Vector3(width, len * 0.16, 0.035)
+    Util.add_mesh(h, tip, color, Vector3(0, 0, z0 - body - len * 0.08), Vector3(-90, 0, 0), 0.25)
+
 static func build(h: Node3D, id: String) -> void:
     var steel := Color(0.85, 0.87, 0.93)
     var wood := Color(0.35, 0.22, 0.1)
@@ -15,67 +45,113 @@ static func build(h: Node3D, id: String) -> void:
     var dark := Color(0.18, 0.18, 0.2)
     match id:
         "knife":
-            _b(h, Vector3(0.05, 0.05, 0.5), steel, Vector3(0, 0, -0.3), Vector3.ZERO, 0.3)
-            _b(h, Vector3(0.07, 0.07, 0.16), wood, Vector3(0, 0, 0.02))
+            _blade(h, 0.06, -0.08, -0.52, steel, steel.darkened(0.15))
+            _b(h, Vector3(0.11, 0.045, 0.04), dark, Vector3(0, 0, -0.07))
+            _cz(h, 0.034, 0.038, 0.17, wood, 0.02, 0.8)
+            _sp(h, 0.04, dark, Vector3(0, 0, 0.11), Vector3.ONE, 0.5)
         "dagger":
-            _b(h, Vector3(0.04, 0.03, 0.42), steel, Vector3(0, 0, -0.28), Vector3.ZERO, 0.3)
-            _b(h, Vector3(0.22, 0.04, 0.05), gold, Vector3(0, 0, -0.06))
-            _b(h, Vector3(0.06, 0.06, 0.14), dark, Vector3(0, 0, 0.04))
+            _blade(h, 0.055, -0.08, -0.5, steel, Color(0.6, 0.63, 0.72))
+            _b(h, Vector3(0.26, 0.04, 0.05), gold, Vector3(0, 0, -0.07), Vector3.ZERO, 0.3)
+            _sp(h, 0.03, gold, Vector3(0.13, 0, -0.07), Vector3.ONE, 0.3)
+            _sp(h, 0.03, gold, Vector3(-0.13, 0, -0.07), Vector3.ONE, 0.3)
+            _cz(h, 0.034, 0.036, 0.16, dark, 0.03, 0.8)
+            _sp(h, 0.045, gold, Vector3(0, 0, 0.12), Vector3.ONE, 0.3)
         "sword":
-            _b(h, Vector3(0.08, 0.04, 1.5), steel, Vector3(0, 0, -0.95), Vector3.ZERO, 0.3)
-            _b(h, Vector3(0.5, 0.06, 0.08), gold, Vector3(0, 0, -0.2))
-            _b(h, Vector3(0.07, 0.07, 0.3), wood, Vector3(0, 0, 0.0))
+            _blade(h, 0.1, -0.22, -1.75, steel, Color(0.62, 0.66, 0.78))
+            _b(h, Vector3(0.52, 0.06, 0.09), gold, Vector3(0, 0, -0.2), Vector3.ZERO, 0.3)
+            _sp(h, 0.045, gold, Vector3(0.26, 0, -0.2), Vector3.ONE, 0.3)
+            _sp(h, 0.045, gold, Vector3(-0.26, 0, -0.2), Vector3.ONE, 0.3)
+            _cz(h, 0.038, 0.042, 0.32, wood, 0.0, 0.85)
+            for k in range(4):
+                _cz(h, 0.045, 0.045, 0.025, dark, -0.1 + 0.07 * float(k), 0.9)
+            _sp(h, 0.065, gold, Vector3(0, 0, 0.17), Vector3.ONE, 0.3)
         "spear":
-            Util.add_mesh(h, Util.cylinder(0.03, 0.03, 3.1), wood, Vector3(0, 0, -1.3), Vector3(90, 0, 0))
-            Util.add_mesh(h, Util.cylinder(0.0, 0.07, 0.5), steel, Vector3(0, 0, -3.1), Vector3(-90, 0, 0), 0.3)
+            _cz(h, 0.03, 0.033, 3.1, wood, -1.3, 0.8)
+            _cz(h, 0.0, 0.075, 0.55, steel, -3.1, 0.25)
+            _b(h, Vector3(0.025, 0.03, 0.4), Color(0.62, 0.66, 0.78), Vector3(0, 0, -3.1), Vector3.ZERO, 0.3)
+            _cz(h, 0.05, 0.05, 0.1, gold, -2.82, 0.3)
+            _sp(h, 0.05, Color(0.7, 0.1, 0.1), Vector3(0, -0.05, -2.74), Vector3(1, 1.8, 1), 0.9)
+            _cz(h, 0.035, 0.0, 0.14, steel, 0.3, 0.3)
         "axe":
-            _b(h, Vector3(0.06, 0.06, 1.3), wood, Vector3(0, 0, -0.55))
-            _b(h, Vector3(0.06, 0.5, 0.36), steel, Vector3(0, 0.05, -1.15), Vector3.ZERO, 0.3)
-            _b(h, Vector3(0.08, 0.14, 0.16), dark, Vector3(0, 0, -1.0))
+            _cz(h, 0.034, 0.04, 1.4, wood, -0.55, 0.8)
+            _b(h, Vector3(0.09, 0.15, 0.2), dark, Vector3(0, 0, -1.0), Vector3.ZERO, 0.4)
+            _b(h, Vector3(0.05, 0.5, 0.28), steel, Vector3(0, 0.05, -1.2), Vector3.ZERO, 0.28)
+            _b(h, Vector3(0.06, 0.52, 0.04), Color(0.95, 0.97, 1.0), Vector3(0, 0.05, -1.36), Vector3.ZERO, 0.2)
+            _cz(h, 0.0, 0.04, 0.2, dark, -0.86, 0.4)
+            _sp(h, 0.04, dark, Vector3(0, 0, 0.15), Vector3.ONE, 0.5)
         "mace":
-            _b(h, Vector3(0.07, 0.07, 1.0), wood, Vector3(0, 0, -0.45))
-            Util.add_mesh(h, Util.sphere(0.2), dark, Vector3(0, 0, -1.05), Vector3.ZERO, 0.4)
-            for i in range(6):
-                var a := TAU * float(i) / 6.0
-                _b(h, Vector3(0.07, 0.07, 0.16), steel, Vector3(cos(a) * 0.2, sin(a) * 0.2, -1.05), Vector3(0, 0, rad_to_deg(a)), 0.3)
-            _b(h, Vector3(0.07, 0.07, 0.16), steel, Vector3(0, 0, -1.28))
+            _cz(h, 0.035, 0.04, 1.05, wood, -0.45, 0.8)
+            _sp(h, 0.21, dark, Vector3(0, 0, -1.05), Vector3.ONE, 0.35)
+            for i in range(8):
+                var a := TAU * float(i) / 8.0
+                Util.add_mesh(h, Util.cylinder(0.0, 0.05, 0.2), steel, Vector3(cos(a) * 0.22, sin(a) * 0.22, -1.05), Vector3(0, 0, rad_to_deg(a) - 90.0), 0.3)
+            for i in range(4):
+                var a2 := TAU * float(i) / 4.0 + 0.4
+                Util.add_mesh(h, Util.cylinder(0.0, 0.05, 0.2), steel, Vector3(cos(a2) * 0.15, sin(a2) * 0.15, -1.2), Vector3(-45.0 * sin(a2), 0, rad_to_deg(a2) - 90.0), 0.3)
+            _cz(h, 0.0, 0.05, 0.2, steel, -1.35, 0.3)
+            _cz(h, 0.05, 0.05, 0.06, gold, -0.8, 0.3)
         "greatsword":
-            _b(h, Vector3(0.14, 0.04, 2.2), steel, Vector3(0, 0, -1.4), Vector3.ZERO, 0.3)
-            _b(h, Vector3(0.7, 0.08, 0.1), gold, Vector3(0, 0, -0.3))
-            _b(h, Vector3(0.08, 0.08, 0.5), wood, Vector3(0, 0, 0.0))
-            _b(h, Vector3(0.05, 0.05, 1.8), Color(0.6, 0.65, 0.75), Vector3(0, 0.03, -1.4), Vector3.ZERO, 0.3)
+            _blade(h, 0.17, -0.34, -2.6, steel, Color(0.6, 0.65, 0.78))
+            _b(h, Vector3(0.74, 0.08, 0.11), gold, Vector3(0, 0, -0.3), Vector3.ZERO, 0.3)
+            _sp(h, 0.06, gold, Vector3(0.37, 0, -0.3), Vector3.ONE, 0.3)
+            _sp(h, 0.06, gold, Vector3(-0.37, 0, -0.3), Vector3.ONE, 0.3)
+            _cz(h, 0.04, 0.045, 0.55, wood, 0.0, 0.85)
+            _sp(h, 0.08, gold, Vector3(0, 0, 0.3), Vector3.ONE, 0.3)
         "warhammer":
-            _b(h, Vector3(0.07, 0.07, 1.5), wood, Vector3(0, 0, -0.6))
-            _b(h, Vector3(0.75, 0.32, 0.32), dark, Vector3(0, 0, -1.4), Vector3.ZERO, 0.4)
-            _b(h, Vector3(0.78, 0.1, 0.1), steel, Vector3(0, 0, -1.4), Vector3.ZERO, 0.3)
+            _cz(h, 0.035, 0.04, 1.5, wood, -0.6, 0.8)
+            _b(h, Vector3(0.5, 0.32, 0.32), dark, Vector3(0, 0, -1.4), Vector3.ZERO, 0.35)
+            _b(h, Vector3(0.56, 0.36, 0.1), steel, Vector3(0, 0, -1.4), Vector3.ZERO, 0.3)
+            Util.add_mesh(h, Util.cylinder(0.0, 0.065, 0.36), steel, Vector3(0.42, 0, -1.4), Vector3(0, 0, -90), 0.3)
+            Util.add_mesh(h, Util.cylinder(0.0, 0.065, 0.2), steel, Vector3(-0.35, 0, -1.4), Vector3(0, 0, 90), 0.3)
         "bow":
-            for i in range(7):
-                var t := lerpf(-1.1, 1.1, float(i) / 6.0)
-                var pos := Vector3(0, sin(t) * 0.6, 0.4 - cos(t) * 0.6)
-                _b(h, Vector3(0.05, 0.28, 0.05), wood, pos, Vector3(rad_to_deg(t), 0, 0))
-            _b(h, Vector3(0.01, 1.06, 0.01), Color(0.9, 0.9, 0.9), Vector3(0, 0, 0.13))
+            for i in range(11):
+                var t := lerpf(-1.1, 1.1, float(i) / 10.0)
+                var thick := lerpf(0.06, 0.04, absf(t) / 1.1)
+                _b(h, Vector3(thick, 0.22, thick), wood, Vector3(0, sin(t) * 0.6, 0.4 - cos(t) * 0.6), Vector3(rad_to_deg(t), 0, 0), 0.6)
+            _cz(h, 0.04, 0.04, 0.2, dark, -0.2, 0.9)
+            _sp(h, 0.03, gold, Vector3(0, 0.55, 0.13), Vector3.ONE, 0.4)
+            _sp(h, 0.03, gold, Vector3(0, -0.55, 0.13), Vector3.ONE, 0.4)
+            _b(h, Vector3(0.012, 1.1, 0.012), Color(0.9, 0.9, 0.9), Vector3(0, 0, 0.13))
         "throwing":
             _b(h, Vector3(0.04, 0.03, 0.34), steel, Vector3(0, 0, -0.22), Vector3.ZERO, 0.3)
             _b(h, Vector3(0.06, 0.06, 0.12), dark, Vector3(0, 0, 0.0))
             _b(h, Vector3(0.04, 0.03, 0.34), steel, Vector3(0.1, 0.0, -0.18), Vector3(0, -12, 0), 0.3)
         "crossbow":
             _b(h, Vector3(0.1, 0.12, 0.9), wood, Vector3(0, 0, -0.3))
+            _b(h, Vector3(0.07, 0.07, 0.3), wood.darkened(0.2), Vector3(0, -0.06, 0.2), Vector3(-8, 0, 0))
             _b(h, Vector3(1.0, 0.05, 0.07), dark, Vector3(0, 0.04, -0.7))
+            for sx in [-1.0, 1.0]:
+                _b(h, Vector3(0.3, 0.05, 0.07), dark, Vector3(float(sx) * 0.62, 0.04, -0.62), Vector3(0, float(sx) * 22.0, 0))
             _b(h, Vector3(1.0, 0.01, 0.01), Color(0.9, 0.9, 0.9), Vector3(0, 0.04, -0.5))
             _b(h, Vector3(0.04, 0.04, 0.5), steel, Vector3(0, 0.1, -0.5), Vector3.ZERO, 0.3)
+            _cz(h, 0.0, 0.03, 0.14, steel, -0.82, 0.3, 0.0, 0.1)
+            _b(h, Vector3(0.14, 0.03, 0.06), dark, Vector3(0, 0.0, -0.9))
         "musket":
-            Util.add_mesh(h, Util.cylinder(0.04, 0.04, 1.5), dark, Vector3(0, 0.03, -0.9), Vector3(90, 0, 0), 0.3)
-            _b(h, Vector3(0.09, 0.15, 0.7), wood, Vector3(0, -0.02, -0.0))
-            _b(h, Vector3(0.1, 0.05, 0.08), gold, Vector3(0, 0.03, -0.4))
+            _cz(h, 0.04, 0.045, 1.5, dark, -0.9, 0.3, 0.0, 0.03)
+            _b(h, Vector3(0.09, 0.15, 0.7), wood, Vector3(0, -0.02, 0.0))
+            _b(h, Vector3(0.08, 0.1, 0.4), wood, Vector3(0, -0.01, -0.4))
+            for k in range(3):
+                _cz(h, 0.05, 0.05, 0.03, gold, -0.5 - 0.35 * float(k), 0.3, 0.0, 0.03)
+            _b(h, Vector3(0.1, 0.05, 0.08), gold, Vector3(0, 0.03, -0.12))
+            _b(h, Vector3(0.025, 0.06, 0.05), steel, Vector3(0, 0.08, -1.55))
+            _b(h, Vector3(0.05, 0.14, 0.22), wood.darkened(0.15), Vector3(0, -0.1, 0.4), Vector3(-12, 0, 0))
         "fire_staff":
-            Util.add_mesh(h, Util.cylinder(0.04, 0.04, 1.9), wood, Vector3(0, 0, -0.7), Vector3(90, 0, 0))
-            Util.add_mesh(h, Util.sphere(0.15), Color(1.0, 0.5, 0.1), Vector3(0, 0, -1.72), Vector3.ZERO, 0.4, 3.0)
-            _b(h, Vector3(0.28, 0.04, 0.04), gold, Vector3(0, 0, -1.55))
+            _cz(h, 0.04, 0.045, 1.9, wood, -0.7, 0.8)
+            _sp(h, 0.12, Color(1.0, 0.6, 0.12), Vector3(0, 0, -1.74), Vector3(1.0, 1.0, 1.4), 0.3, 3.5)
+            _sp(h, 0.07, Color(1.0, 0.9, 0.5), Vector3(0, 0, -1.76), Vector3.ONE, 0.2, 4.0)
+            for i in range(4):
+                var a := TAU * float(i) / 4.0 + 0.4
+                Util.add_mesh(h, Util.cylinder(0.0, 0.03, 0.34), gold, Vector3(cos(a) * 0.15, sin(a) * 0.15, -1.62), Vector3(-90, 0, 0), 0.3)
+            _cz(h, 0.07, 0.07, 0.05, gold, -1.5, 0.3)
+            _cz(h, 0.05, 0.05, 0.04, gold, -0.3, 0.3)
         "lightning":
-            Util.add_mesh(h, Util.cylinder(0.04, 0.04, 1.9), wood, Vector3(0, 0, -0.7), Vector3(90, 0, 0))
-            Util.add_mesh(h, Util.sphere(0.15), Color(0.4, 0.8, 1.0), Vector3(0, 0, -1.72), Vector3.ZERO, 0.4, 3.5)
-            _b(h, Vector3(0.28, 0.04, 0.04), gold, Vector3(0, 0, -1.55))
-            _b(h, Vector3(0.04, 0.28, 0.04), gold, Vector3(0, 0, -1.55))
+            _cz(h, 0.04, 0.045, 1.9, wood, -0.7, 0.8)
+            _sp(h, 0.11, Color(0.4, 0.8, 1.0), Vector3(0, 0, -1.74), Vector3(0.9, 0.9, 1.5), 0.3, 3.5)
+            _sp(h, 0.06, Color(0.9, 1.0, 1.0), Vector3(0, 0, -1.76), Vector3.ONE, 0.2, 4.0)
+            _b(h, Vector3(0.3, 0.04, 0.04), gold, Vector3(0, 0, -1.55))
+            _b(h, Vector3(0.04, 0.3, 0.04), gold, Vector3(0, 0, -1.55))
+            _cz(h, 0.07, 0.07, 0.05, gold, -1.5, 0.3)
+            _cz(h, 0.0, 0.05, 0.3, Color(0.4, 0.8, 1.0), -1.98, 0.3, 2.0)
         "vamp_blade":
             _b(h, Vector3(0.1, 0.04, 1.6), Color(0.75, 0.1, 0.12), Vector3(0, 0, -1.0), Vector3.ZERO, 0.3, 1.5)
             _b(h, Vector3(0.55, 0.07, 0.09), dark, Vector3(0, 0, -0.2))
@@ -83,33 +159,48 @@ static func build(h: Node3D, id: String) -> void:
             Util.add_mesh(h, Util.sphere(0.07), Color(0.9, 0.1, 0.15), Vector3(0, 0.06, -0.2), Vector3.ZERO, 0.3, 3.0)
         "elven_bow":
             var leaf := Color(0.75, 0.9, 0.5)
-            for i in range(7):
-                var t := lerpf(-1.2, 1.2, float(i) / 6.0)
-                var pos := Vector3(0, sin(t) * 0.65, 0.45 - cos(t) * 0.65)
-                _b(h, Vector3(0.05, 0.3, 0.05), leaf, pos, Vector3(rad_to_deg(t), 0, 0), 0.4, 1.0)
+            for i in range(11):
+                var t := lerpf(-1.2, 1.2, float(i) / 10.0)
+                var thick := lerpf(0.06, 0.035, absf(t) / 1.2)
+                _b(h, Vector3(thick, 0.24, thick), leaf, Vector3(0, sin(t) * 0.65, 0.45 - cos(t) * 0.65), Vector3(rad_to_deg(t), 0, 0), 0.4, 1.0)
+            _cz(h, 0.04, 0.04, 0.2, Color(0.35, 0.22, 0.12), -0.2, 0.9)
+            for sy in [-1.0, 1.0]:
+                _sp(h, 0.035, Color(1.0, 0.95, 0.6), Vector3(0, float(sy) * 0.6, 0.2), Vector3(1, 1.6, 1), 0.3, 2.0)
             _b(h, Vector3(0.01, 1.2, 0.01), Color(1, 1, 1), Vector3(0, 0, 0.18))
         "blunderbuss":
             Util.add_mesh(h, Util.cylinder(0.04, 0.12, 0.9), dark, Vector3(0, 0.02, -0.7), Vector3(90, 0, 0), 0.3)
             _b(h, Vector3(0.09, 0.15, 0.6), wood, Vector3(0, -0.02, -0.0))
             _b(h, Vector3(0.1, 0.05, 0.08), gold, Vector3(0, 0.03, -0.3))
         "thunder_hammer":
-            _b(h, Vector3(0.08, 0.08, 1.6), wood, Vector3(0, 0, -0.65))
+            _cz(h, 0.04, 0.045, 1.6, wood, -0.65, 0.8)
             _b(h, Vector3(0.9, 0.42, 0.42), Color(0.25, 0.3, 0.45), Vector3(0, 0, -1.5), Vector3.ZERO, 0.3)
             _b(h, Vector3(0.94, 0.12, 0.12), Color(0.4, 0.8, 1.0), Vector3(0, 0, -1.5), Vector3.ZERO, 0.3, 3.0)
+            for sx in [-1.0, 1.0]:
+                _b(h, Vector3(0.06, 0.5, 0.5), steel, Vector3(float(sx) * 0.46, 0, -1.5), Vector3.ZERO, 0.3)
+            _sp(h, 0.08, Color(0.5, 0.9, 1.0), Vector3(0, 0.23, -1.5), Vector3.ONE, 0.3, 3.5)
+            _cz(h, 0.06, 0.06, 0.06, gold, -0.7, 0.3)
         "holy_spear":
-            Util.add_mesh(h, Util.cylinder(0.035, 0.035, 3.6), Color(0.95, 0.92, 0.8), Vector3(0, 0, -1.6), Vector3(90, 0, 0))
-            Util.add_mesh(h, Util.cylinder(0.0, 0.1, 0.6), Color(1.0, 0.9, 0.4), Vector3(0, 0, -3.7), Vector3(-90, 0, 0), 0.3, 2.5)
+            _cz(h, 0.035, 0.038, 3.6, Color(0.95, 0.92, 0.8), -1.6, 0.6)
+            _cz(h, 0.0, 0.1, 0.6, Color(1.0, 0.9, 0.4), -3.7, 0.3, 2.5)
+            for sx in [-1.0, 1.0]:
+                _b(h, Vector3(0.1, 0.03, 0.3), gold, Vector3(float(sx) * 0.1, 0, -3.35), Vector3(0, float(sx) * 25.0, 0), 0.3, 1.5)
+            _sp(h, 0.06, Color(1.0, 0.95, 0.7), Vector3(0, 0, -3.35), Vector3.ONE, 0.3, 3.0)
         "dragon_staff":
-            Util.add_mesh(h, Util.cylinder(0.05, 0.05, 2.1), Color(0.2, 0.05, 0.05), Vector3(0, 0, -0.8), Vector3(90, 0, 0))
-            Util.add_mesh(h, Util.sphere(0.22), Color(1.0, 0.25, 0.05), Vector3(0, 0, -1.95), Vector3.ZERO, 0.4, 4.0)
+            _cz(h, 0.05, 0.055, 2.1, Color(0.2, 0.05, 0.05), -0.8, 0.7)
+            _sp(h, 0.2, Color(1.0, 0.25, 0.05), Vector3(0, 0, -1.98), Vector3(1, 1, 1.15), 0.3, 4.0)
+            _sp(h, 0.1, Color(1.0, 0.8, 0.3), Vector3(0, 0, -1.98), Vector3.ONE, 0.3, 4.5)
             for i in range(4):
                 var a := TAU * float(i) / 4.0
-                _b(h, Vector3(0.05, 0.05, 0.3), gold, Vector3(cos(a) * 0.2, sin(a) * 0.2, -1.8))
+                Util.add_mesh(h, Util.cylinder(0.0, 0.05, 0.42), gold, Vector3(cos(a) * 0.2, sin(a) * 0.2, -1.8), Vector3(-90, 0, 0), 0.3)
+                _cz(h, 0.0, 0.04, 0.16, gold, -2.08, 0.3, 0.0, sin(a) * 0.12, cos(a) * 0.12)
+            _cz(h, 0.08, 0.08, 0.06, gold, -1.6, 0.3)
         "storm_staff":
-            Util.add_mesh(h, Util.cylinder(0.05, 0.05, 2.1), Color(0.15, 0.1, 0.3), Vector3(0, 0, -0.8), Vector3(90, 0, 0))
-            Util.add_mesh(h, Util.sphere(0.2), Color(0.7, 0.4, 1.0), Vector3(0, 0, -1.95), Vector3.ZERO, 0.4, 4.5)
-            _b(h, Vector3(0.4, 0.04, 0.04), Color(0.8, 0.9, 1.0), Vector3(0, 0, -1.8), Vector3.ZERO, 0.3, 2.0)
-            _b(h, Vector3(0.04, 0.4, 0.04), Color(0.8, 0.9, 1.0), Vector3(0, 0, -1.8), Vector3.ZERO, 0.3, 2.0)
+            _cz(h, 0.05, 0.055, 2.1, Color(0.15, 0.1, 0.3), -0.8, 0.7)
+            _sp(h, 0.18, Color(0.7, 0.4, 1.0), Vector3(0, 0, -1.98), Vector3(0.8, 1.2, 1.1), 0.25, 4.5)
+            _b(h, Vector3(0.44, 0.04, 0.04), Color(0.8, 0.9, 1.0), Vector3(0, 0, -1.8), Vector3.ZERO, 0.3, 2.0)
+            _b(h, Vector3(0.04, 0.44, 0.04), Color(0.8, 0.9, 1.0), Vector3(0, 0, -1.8), Vector3.ZERO, 0.3, 2.0)
+            _b(h, Vector3(0.04, 0.3, 0.04), Color(0.8, 0.9, 1.0), Vector3(0.0, 0.0, -1.8), Vector3(0, 0, 45), 0.3, 2.0)
+            _cz(h, 0.07, 0.07, 0.05, Color(0.6, 0.65, 0.8), -1.55, 0.3)
         "water_element":
             # у руці немає предмета: кулак опутаний живою водою (кульки на орбітах)
             var wh := Node3D.new()

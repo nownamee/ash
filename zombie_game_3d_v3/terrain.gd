@@ -189,6 +189,10 @@ var _shapes: Array = []
 var _frame := Transform3D.IDENTITY
 var _lights: Array = []
 var _yaw := 0.0
+var _base_frame := Transform3D.IDENTITY   # рамка об'єкта (для вкладених піддекорацій _sub)
+var _base_yaw := 0.0
+var _decor: Array = []        # дрібні плоскі об'єкти чанка: {p, r} — щоб тверді предмети не ставали поверх них
+var _grp := 0                 # номер групи (ряд, супутники): сусідні секції паркану не рахуються перешкодою одна одній
 var _chunk_pools: Array = []   # кола вогню поблизу поточного чанка: [x, z, r]
 var _placed: Array = []       # тверді об'єкти поточного чанка: [{c, r, fp}] — для перевірки проходів
 
@@ -217,26 +221,7 @@ func _ready() -> void:
     _prop_mat.uv1_world_triplanar = true
     _prop_mat.uv1_scale = Vector3(0.6, 0.6, 0.6)
 
-    var bm := BoxMesh.new()
-    bm.size = Vector3.ONE
-    var sm := SphereMesh.new()
-    sm.radius = 0.5
-    sm.height = 1.0
-    sm.radial_segments = 16
-    sm.rings = 8
-    var cm := CylinderMesh.new()
-    cm.top_radius = 0.5
-    cm.bottom_radius = 0.5
-    cm.height = 1.0
-    cm.radial_segments = 14
-    var nm := CylinderMesh.new()
-    nm.top_radius = 0.0
-    nm.bottom_radius = 0.5
-    nm.height = 1.0
-    nm.radial_segments = 14
-    _unit = {"box": bm, "sphere": sm, "cyl": cm, "cone": nm}
-    for k in _unit:
-        _unit[k].material = _prop_mat
+    _make_unit_meshes()
 
     _build_start_area()
     if corridor:
@@ -318,7 +303,11 @@ func _build_chunk(c: Vector2i) -> Node3D:
     var z0 := float(c.y) * CHUNK
     root.add_child(_build_ground(x0, z0))
 
-    _parts = {"box": [[], []], "sphere": [[], []], "cyl": [[], []], "cone": [[], []]}
+    _parts = {}
+    for uk in _unit:
+        _parts[uk] = [[], []]
+    _decor = []
+    _grp = 0
     _shapes = []
     _lights = []
     _placed = []
@@ -1418,6 +1407,8 @@ func _begin(x: float, z: float, yaw: float) -> void:
         yaw = _yaw_force
     _yaw = yaw
     _frame = Transform3D(Basis(Vector3.UP, yaw), Vector3(x, 0.0, z))
+    _base_frame = _frame
+    _base_yaw = yaw
 
 func _part(shape: String, lpos: Vector3, size: Vector3, lrot: Vector3, color: Color) -> void:
     var rot := Vector3(deg_to_rad(lrot.x), deg_to_rad(lrot.y), deg_to_rad(lrot.z))
@@ -1431,9 +1422,9 @@ func _col_cyl(local_pos: Vector3, r: float, h: float) -> void:
     var p: Vector3 = _frame * local_pos
     _shapes.append({"t": "cyl", "pos": Vector3(p.x, h * 0.5, p.z), "r": r, "h": h})
 
-func _col_box(local_pos: Vector3, size: Vector3) -> void:
+func _col_box(local_pos: Vector3, size: Vector3, ryaw: float = 0.0) -> void:
     var p: Vector3 = _frame * local_pos
-    _shapes.append({"t": "box", "pos": Vector3(p.x, size.y * 0.5, p.z), "size": size, "yaw": _yaw})
+    _shapes.append({"t": "box", "pos": Vector3(p.x, size.y * 0.5, p.z), "size": size, "yaw": _yaw + ryaw})
 
 func _jit(c: Color, amt: float, rng: RandomNumberGenerator) -> Color:
     var j := rng.randf_range(-amt, amt)
@@ -1512,332 +1503,1852 @@ func _spawn_prop(kind: String, x: float, z: float, rng: RandomNumberGenerator) -
         "burning_tree": _p_burning_tree(x, z, rng)
         "charred_log": _p_charred_log(x, z, rng)
         "burnt_beams": _p_burnt_beams(x, z, rng)
+        # нові
+        "well": _p_well(x, z, rng)
+        "dry_well": _p_dry_well(x, z, rng)
+        "cart": _p_cart(x, z, rng)
+        "broken_cart": _p_broken_cart(x, z, rng)
+        "scarecrow": _p_scarecrow(x, z, rng)
+        "woodpile": _p_woodpile(x, z, rng)
+        "crops": _p_crops(x, z, rng)
+        "beehive": _p_beehive(x, z, rng)
+        "fallen_tree": _p_fallen_tree(x, z, rng)
+        "bramble": _p_bramble(x, z, rng)
+        "mushroom_ring": _p_mushroom_ring(x, z, rng)
+        "reeds": _p_reeds(x, z, rng)
+        "tent": _p_tent(x, z, rng)
+        "skull_pile": _p_skull_pile(x, z, rng)
+        "ribcage": _p_ribcage(x, z, rng)
+        "frozen_statue": _p_frozen_statue(x, z, rng)
+        "sled": _p_sled(x, z, rng)
+        "igloo": _p_igloo(x, z, rng)
+        "angel_statue": _p_angel_statue(x, z, rng)
+        "mausoleum": _p_mausoleum(x, z, rng)
+        "open_grave": _p_open_grave(x, z, rng)
+        "coffin": _p_coffin(x, z, rng)
+        "lantern_post": _p_lantern_post(x, z, rng)
+        "fallen_column": _p_fallen_column(x, z, rng)
+        "statue": _p_statue(x, z, rng)
+        "broken_stairs": _p_broken_stairs(x, z, rng)
+        "bus": _p_bus(x, z, rng)
+        "traffic_cone": _p_traffic_cone(x, z, rng)
+        "bench": _p_bench(x, z, rng)
+        "bus_stop": _p_bus_stop(x, z, rng)
+        "mailbox": _p_mailbox(x, z, rng)
+        "hydrant": _p_hydrant(x, z, rng)
+        "newspaper_box": _p_newspaper_box(x, z, rng)
+        "police_car": _p_police_car(x, z, rng)
+        "crosswalk": _p_crosswalk(x, z, rng)
+        "sunken_boat": _p_sunken_boat(x, z, rng)
+        "collapsed_chimney": _p_collapsed_chimney(x, z, rng)
+        "charred_cart": _p_charred_cart(x, z, rng)
+        # композиції
+        "farmstead": _p_farmstead(x, z, rng)
+        "camp": _p_camp(x, z, rng)
+        "grave_plot": _p_grave_plot(x, z, rng)
+        "road_block": _p_road_block(x, z, rng)
+        "swamp_homestead": _p_swamp_homestead(x, z, rng)
+        "ice_camp": _p_ice_camp(x, z, rng)
+        "caravan": _p_caravan(x, z, rng)
+        "burned_farm": _p_burned_farm(x, z, rng)
 
+func _p_dry_well(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    _m_well(rng, true)
+
+func _p_broken_cart(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    _m_cart(rng, 1)
+
+func _p_police_car(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    _m_car(rng, 1)
+
+# ---------- Власні меші: низькополігональні, з плоским затіненням ----------
+func _tri_out(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3) -> void:
+    # Лицьова сторона в Godot — за годинниковою стрілкою; наші фігури опуклі й містять початок координат
+    var n := (b - a).cross(c - a)
+    if n.dot((a + b + c) / 3.0) > 0.0:
+        var t := b
+        b = c
+        c = t
+    for p in [a, b, c]:
+        st.set_smooth_group(-1)
+        st.add_vertex(p)
+
+func _hash3(p: Vector3, s: float) -> float:
+    var h := sin(p.x * 12.9898 + p.y * 78.233 + p.z * 37.719 + s * 17.17) * 43758.5453
+    return h - floorf(h)
+
+# Нерівна «брила»: ікосфера з одним поділом, вершини зсунуто детерміновано; знизу зрізана, щоб стояла на землі.
+func _make_blob_mesh(seed_v: float, rough: float, flat_bottom: float) -> ArrayMesh:
+    var t := (1.0 + sqrt(5.0)) * 0.5
+    var v: Array = [Vector3(-1, t, 0), Vector3(1, t, 0), Vector3(-1, -t, 0), Vector3(1, -t, 0), Vector3(0, -1, t), Vector3(0, 1, t), Vector3(0, -1, -t), Vector3(0, 1, -t), Vector3(t, 0, -1), Vector3(t, 0, 1), Vector3(-t, 0, -1), Vector3(-t, 0, 1)]
+    var f: Array = [[0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8], [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9], [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]]
+    var st := SurfaceTool.new()
+    st.begin(Mesh.PRIMITIVE_TRIANGLES)
+    for tri in f:
+        var a: Vector3 = (v[tri[0]] as Vector3).normalized()
+        var b: Vector3 = (v[tri[1]] as Vector3).normalized()
+        var c: Vector3 = (v[tri[2]] as Vector3).normalized()
+        var ab := (a + b).normalized()
+        var bc := (b + c).normalized()
+        var ca := (c + a).normalized()
+        for q in [[a, ab, ca], [b, bc, ab], [c, ca, bc], [ab, bc, ca]]:
+            var pts: Array = []
+            for d in q:
+                var dir: Vector3 = d
+                var r := 0.5 * (1.0 + rough * (_hash3(dir, seed_v) - 0.5) * 2.0)
+                var p := dir * r
+                p.y = maxf(p.y, -flat_bottom)
+                pts.append(p)
+            _tri_out(st, pts[0], pts[1], pts[2])
+    st.generate_normals()
+    return st.commit()
+
+# Призма даху: гребінь уздовж X, ширина по Z, висота по Y (від -0.5 до 0.5).
+func _make_wedge_mesh() -> ArrayMesh:
+    var st := SurfaceTool.new()
+    st.begin(Mesh.PRIMITIVE_TRIANGLES)
+    var a0 := Vector3(-0.5, -0.5, -0.5)
+    var a1 := Vector3(0.5, -0.5, -0.5)
+    var b0 := Vector3(-0.5, -0.5, 0.5)
+    var b1 := Vector3(0.5, -0.5, 0.5)
+    var r0 := Vector3(-0.5, 0.5, 0.0)
+    var r1 := Vector3(0.5, 0.5, 0.0)
+    _tri_out(st, a0, a1, r1)
+    _tri_out(st, a0, r1, r0)
+    _tri_out(st, b0, r0, r1)
+    _tri_out(st, b0, r1, b1)
+    _tri_out(st, a0, r0, b0)
+    _tri_out(st, a1, b1, r1)
+    _tri_out(st, a0, b0, b1)
+    _tri_out(st, a0, b1, a1)
+    st.generate_normals()
+    return st.commit()
+
+# Шестигранний кристал зі шпилем (лід, самоцвіти, бурульки).
+func _make_crystal_mesh() -> ArrayMesh:
+    var st := SurfaceTool.new()
+    st.begin(Mesh.PRIMITIVE_TRIANGLES)
+    var apex := Vector3(0, 0.5, 0)
+    var bot := Vector3(0, -0.5, 0)
+    for i in range(6):
+        var a0 := TAU * float(i) / 6.0
+        var a1 := TAU * float(i + 1) / 6.0
+        var lo0 := Vector3(cos(a0), 0.0, sin(a0)) * 0.42 + Vector3(0, -0.5, 0)
+        var lo1 := Vector3(cos(a1), 0.0, sin(a1)) * 0.42 + Vector3(0, -0.5, 0)
+        var hi0 := Vector3(cos(a0), 0.0, sin(a0)) * 0.5 + Vector3(0, 0.12, 0)
+        var hi1 := Vector3(cos(a1), 0.0, sin(a1)) * 0.5 + Vector3(0, 0.12, 0)
+        _tri_out(st, lo0, lo1, hi1)
+        _tri_out(st, lo0, hi1, hi0)
+        _tri_out(st, hi0, hi1, apex)
+        _tri_out(st, lo0, bot, lo1)
+    st.generate_normals()
+    return st.commit()
+
+func _make_unit_meshes() -> void:
+    var bm := BoxMesh.new()
+    bm.size = Vector3.ONE
+    var sm := SphereMesh.new()
+    sm.radius = 0.5
+    sm.height = 1.0
+    sm.radial_segments = 16
+    sm.rings = 8
+    var cm := CylinderMesh.new()
+    cm.top_radius = 0.5
+    cm.bottom_radius = 0.5
+    cm.height = 1.0
+    cm.radial_segments = 14
+    var nm := CylinderMesh.new()
+    nm.top_radius = 0.0
+    nm.bottom_radius = 0.5
+    nm.height = 1.0
+    nm.radial_segments = 14
+    var tm := TorusMesh.new()
+    tm.inner_radius = 0.34
+    tm.outer_radius = 0.5
+    tm.rings = 16
+    tm.ring_segments = 8
+    _unit = {"box": bm, "sphere": sm, "cyl": cm, "cone": nm, "torus": tm}
+    _unit["rock"] = _make_blob_mesh(1.7, 0.30, 0.34)
+    _unit["leaf"] = _make_blob_mesh(4.1, 0.14, 0.5)
+    _unit["wedge"] = _make_wedge_mesh()
+    _unit["crystal"] = _make_crystal_mesh()
+    for k in _unit:
+        var m: Mesh = _unit[k]
+        if m is PrimitiveMesh:
+            (m as PrimitiveMesh).material = _prop_mat
+        else:
+            m.surface_set_material(0, _prop_mat)
+
+# ---------- Допоміжне для моделей ----------
+func _pc(shape: String, lpos: Vector3, size: Vector3, color: Color) -> void:
+    _part(shape, lpos, size, Vector3.ZERO, color)
+
+# Брус/циліндр/шип між двома точками (локальні координати); для "cone" основа в a, вершина в b.
+func _pb(shape: String, a: Vector3, b: Vector3, thick: float, color: Color) -> void:
+    var d := b - a
+    var l := d.length()
+    if l < 0.001:
+        return
+    var up := d / l
+    var q := Quaternion(Vector3.RIGHT, PI) if up.y < -0.9999 else Quaternion(Vector3.UP, up)
+    var bs := Basis(q) * Basis.from_scale(Vector3(thick, l, thick))
+    var entry: Array = _parts[shape]
+    entry[0].append(_frame * Transform3D(bs, (a + b) * 0.5))
+    entry[1].append(color)
+
+# Кущ листя/крона: випадковий поворот, щоб грані не повторювались.
+func _clump(lpos: Vector3, size: Vector3, color: Color, rng: RandomNumberGenerator) -> void:
+    _part("leaf", lpos, size, Vector3(rng.randf_range(-10.0, 10.0), rng.randf() * 360.0, rng.randf_range(-10.0, 10.0)), color)
+
+func _chunk_of_rock(lpos: Vector3, size: Vector3, color: Color, rng: RandomNumberGenerator) -> void:
+    _part("rock", lpos, size, Vector3(rng.randf_range(-12.0, 12.0), rng.randf() * 360.0, rng.randf_range(-12.0, 12.0)), color)
+
+# Піддекорація: поточна рамка зміщується в локальну точку й повертається (композитні об'єкти).
+func _sub(lx: float, lz: float, ryaw: float) -> void:
+    _frame = _base_frame * Transform3D(Basis(Vector3.UP, ryaw), Vector3(lx, 0.0, lz))
+    _yaw = _base_yaw + ryaw
+
+func _sub_end() -> void:
+    _frame = _base_frame
+    _yaw = _base_yaw
+
+func _light_local(y: float, energy: float, range_m: float, color: Color) -> void:
+    if _lights.is_empty():
+        var p: Vector3 = _frame * Vector3(0.0, y, 0.0)
+        _lights.append({"pos": p, "color": color, "energy": energy, "range": range_m})
+
+func _face_yaw(from: Vector2, to: Vector2) -> float:
+    var d := to - from
+    return atan2(-d.x, -d.y)
+
+# Паркан: стовпи через ~1.5 м, дві-три жердини, іноді зламана. Ділянка між точками (локальні x,z), колізія — по секціях.
+func _fence_run(x0: float, z0: float, x1: float, z1: float, wood: Color, rng: RandomNumberGenerator) -> void:
+    var d := Vector2(x1 - x0, z1 - z0)
+    var length := d.length()
+    if length < 0.2:
+        return
+    var dir := d / length
+    var ang := atan2(-dir.y, dir.x)
+    var n := maxi(1, int(ceil(length / 3.0)))
+    var seg := length / float(n)
+    for s in range(n):
+        var a := Vector2(x0, z0) + dir * seg * float(s)
+        var b := a + dir * seg
+        var m := (a + b) * 0.5
+        for k in range(3):
+            var pp := a.lerp(b, float(k) / 2.0)
+            var ph := 1.0 + rng.randf_range(-0.08, 0.08)
+            _part("box", Vector3(pp.x, ph * 0.5, pp.y), Vector3(0.14, ph, 0.14), Vector3(rng.randf_range(-3, 3), 0, rng.randf_range(-3, 3)), wood.darkened(0.1))
+            _pc("box", Vector3(pp.x, ph + 0.02, pp.y), Vector3(0.18, 0.05, 0.18), wood.lightened(0.15))
+        for yy in [0.38, 0.72]:
+            var broken := rng.randf() < 0.1
+            _part("box", Vector3(m.x, float(yy) - (0.12 if broken else 0.0), m.y), Vector3(seg, 0.09, 0.07), Vector3(0, rad_to_deg(ang), 14.0 if broken else 0.0), wood.lightened(rng.randf_range(-0.05, 0.1)))
+        _col_box(Vector3(m.x, 0.0, m.y), Vector3(seg, 1.0, 0.25), ang)
+
+# Кована решітка цвинтаря: прути з вістрями, кам'яні стовпи з кулями.
+func _iron_run(x0: float, z0: float, x1: float, z1: float, rng: RandomNumberGenerator) -> void:
+    var d := Vector2(x1 - x0, z1 - z0)
+    var length := d.length()
+    if length < 0.2:
+        return
+    var dir := d / length
+    var ang := atan2(-dir.y, dir.x)
+    var n := maxi(1, int(ceil(length / 3.0)))
+    var seg := length / float(n)
+    var iron := Color(0.10, 0.10, 0.12)
+    var stone := Color(0.36, 0.35, 0.37)
+    for s in range(n):
+        var a := Vector2(x0, z0) + dir * seg * float(s)
+        var b := a + dir * seg
+        var m := (a + b) * 0.5
+        _pc("box", Vector3(a.x, 0.8, a.y), Vector3(0.3, 1.6, 0.3), stone)
+        _pc("sphere", Vector3(a.x, 1.7, a.y), Vector3(0.32, 0.32, 0.32), stone.lightened(0.08))
+        var bars := maxi(3, int(seg / 0.6))
+        for k in range(1, bars):
+            var pp := a.lerp(b, float(k) / float(bars))
+            var hh := 1.25 + (0.0 if rng.randf() > 0.12 else -0.35)
+            _pc("cyl", Vector3(pp.x, hh * 0.5, pp.y), Vector3(0.05, hh, 0.05), iron)
+            _pc("cone", Vector3(pp.x, hh + 0.1, pp.y), Vector3(0.1, 0.22, 0.1), iron.lightened(0.05))
+        _part("box", Vector3(m.x, 0.3, m.y), Vector3(seg, 0.05, 0.05), Vector3(0, rad_to_deg(ang), 0), iron)
+        _part("box", Vector3(m.x, 1.0, m.y), Vector3(seg, 0.05, 0.05), Vector3(0, rad_to_deg(ang), 0), iron)
+        _col_box(Vector3(m.x, 0.0, m.y), Vector3(seg, 1.4, 0.25), ang)
+    _pc("box", Vector3(x1, 0.8, z1), Vector3(0.3, 1.6, 0.3), stone)
+    _pc("sphere", Vector3(x1, 1.7, z1), Vector3(0.32, 0.32, 0.32), stone.lightened(0.08))
+
+# ---------- Дерева ----------
 func _p_tree_oak(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, rng.randf() * TAU)
-    var h := rng.randf_range(2.2, 3.6)
+    var h := rng.randf_range(2.2, 3.4)
     var s := rng.randf_range(0.9, 1.3)
     var bark := _jit(Color(0.33, 0.21, 0.11), 0.04, rng)
-    var leaf := _jit(Color(0.16, 0.45, 0.16), 0.06, rng)
-    _part("cyl", Vector3(0, h * 0.5, 0), Vector3(0.5, h, 0.5), Vector3.ZERO, bark)
-    _part("sphere", Vector3(0, h + 0.5, 0), Vector3(2.8, 2.3, 2.8) * s, Vector3.ZERO, leaf)
-    _part("sphere", Vector3(0.9 * s, h - 0.1, 0.3), Vector3(1.9, 1.6, 1.9) * s, Vector3.ZERO, leaf.lightened(0.06))
-    _part("sphere", Vector3(-0.8 * s, h, -0.5), Vector3(1.8, 1.5, 1.8) * s, Vector3.ZERO, leaf.darkened(0.06))
+    var leaf := _jit(Color(0.17, 0.46, 0.15), 0.05, rng)
+    if rng.randf() < 0.18:
+        leaf = leaf.lerp(Color(0.55, 0.42, 0.12), 0.45)     # осіннє дерево
+    _pc("cone", Vector3(0, 0.5, 0), Vector3(1.05, 1.0, 1.05), bark.darkened(0.08))
+    _pc("cyl", Vector3(0, h * 0.5, 0), Vector3(0.5, h, 0.5), bark)
+    var ra := rng.randf() * TAU
+    for i in range(3):
+        var a := ra + TAU * float(i) / 3.0 + rng.randf_range(-0.4, 0.4)
+        _pb("cone", Vector3(cos(a) * 0.18, 0.28, sin(a) * 0.18), Vector3(cos(a) * 0.95, 0.03, sin(a) * 0.95), 0.3, bark.darkened(0.14))
+    var ba := rng.randf() * TAU
+    _pb("cyl", Vector3(0, h * 0.75, 0), Vector3(cos(ba) * 0.9 * s, h + 0.5, sin(ba) * 0.9 * s), 0.2, bark)
+    _pb("cyl", Vector3(0, h * 0.8, 0), Vector3(-cos(ba) * 0.8 * s, h + 0.4, -sin(ba) * 0.8 * s), 0.17, bark)
+    # крона: темніший низ, світліший верх, кілька клаптів світла
+    for i in range(4):
+        var a := TAU * float(i) / 4.0 + rng.randf_range(-0.4, 0.4)
+        var r := rng.randf_range(0.95, 1.25) * s
+        _clump(Vector3(cos(a) * r, h + rng.randf_range(-0.1, 0.2), sin(a) * r), Vector3(1.9, 1.35, 1.9) * s * rng.randf_range(0.9, 1.15), leaf.darkened(0.26), rng)
+    for i in range(3):
+        var a := TAU * (float(i) + 0.5) / 3.0 + rng.randf_range(-0.4, 0.4)
+        var r := rng.randf_range(0.55, 0.85) * s
+        _clump(Vector3(cos(a) * r, h + 0.8 + rng.randf_range(-0.1, 0.2), sin(a) * r), Vector3(1.9, 1.4, 1.9) * s * rng.randf_range(0.9, 1.1), leaf, rng)
+    _clump(Vector3(rng.randf_range(-0.2, 0.2), h + 1.45 * s, rng.randf_range(-0.2, 0.2)), Vector3(1.8, 1.25, 1.8) * s, leaf.lightened(0.14), rng)
+    _clump(Vector3(0.5 * s, h + 1.5 * s, -0.4 * s), Vector3(0.9, 0.6, 0.9) * s, leaf.lerp(Color(0.6, 0.75, 0.2), 0.35), rng)
     _col_cyl(Vector3.ZERO, 0.38, 3.0)
 
 func _p_pine(x: float, z: float, rng: RandomNumberGenerator, snowy: bool) -> void:
     _begin(x, z, rng.randf() * TAU)
-    var h := rng.randf_range(3.0, 5.0)
+    var h := rng.randf_range(3.2, 5.2)
     var bark := _jit(Color(0.30, 0.19, 0.1), 0.04, rng)
-    var leaf := _jit(Color(0.10, 0.32, 0.16), 0.05, rng)
-    var white := Color(0.93, 0.95, 0.98)
-    _part("cyl", Vector3(0, 0.7, 0), Vector3(0.45, 1.4, 0.45), Vector3.ZERO, bark)
-    for i in range(3):
-        var t := float(i) / 2.0
-        var w := lerpf(2.8, 1.2, t)
-        var y := 1.6 + t * (h - 2.6)
-        var c := leaf
+    var leaf := _jit(Color(0.09, 0.30, 0.15), 0.05, rng)
+    var white := Color(0.94, 0.96, 1.0)
+    _pc("cone", Vector3(0, 0.4, 0), Vector3(0.8, 0.8, 0.8), bark.darkened(0.08))
+    _pc("cyl", Vector3(0, 0.9, 0), Vector3(0.42, 1.8, 0.42), bark)
+    var tiers := 4 if h > 4.0 else 3
+    for i in range(tiers):
+        var t := float(i) / float(tiers - 1)
+        var w := lerpf(3.1, 1.1, t) * rng.randf_range(0.94, 1.06)
+        var th := lerpf(1.6, 1.25, t)
+        var y := 1.5 + t * (h - 2.5) + th * 0.5
+        var c := leaf.darkened(0.16 * (1.0 - t)).lightened(0.05 * t)
         if snowy:
-            c = leaf.lerp(white, 0.35 + 0.3 * t)
-        _part("cone", Vector3(0, y, 0), Vector3(w, 2.0, w), Vector3.ZERO, c)
+            c = c.lerp(white, 0.2 + 0.25 * t)
+        _part("cone", Vector3(0, y, 0), Vector3(w, th, w), Vector3(0, rng.randf() * 60.0, 0), c)
+        # нижній край ярусу трохи темніший: «тінь» під лапами
+        _part("cone", Vector3(0, y - th * 0.32, 0), Vector3(w * 1.04, th * 0.4, w * 1.04), Vector3(0, rng.randf() * 60.0, 0), c.darkened(0.2))
+        if snowy:
+            _pc("cone", Vector3(0, y + th * 0.18, 0), Vector3(w * 0.8, th * 0.62, w * 0.8), white)
+    var top := 1.5 + (h - 2.5) + 1.5
+    _pc("cone", Vector3(0, top + 0.2, 0), Vector3(0.6, 1.0, 0.6), (white if snowy else leaf.lightened(0.1)))
     _col_cyl(Vector3.ZERO, 0.4, 3.0)
 
 func _p_dead_tree(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, rng.randf() * TAU)
-    var h := rng.randf_range(2.0, 3.2)
+    var h := rng.randf_range(2.2, 3.4)
     var bark := _jit(Color(0.30, 0.26, 0.22), 0.04, rng)
-    _part("cyl", Vector3(0, h * 0.5, 0), Vector3(0.35, h, 0.35), Vector3.ZERO, bark)
-    for i in range(3):
-        var side := -1.0
-        if i % 2 == 1:
-            side = 1.0
-        _part("cyl", Vector3(side * 0.35, h * (0.55 + 0.15 * float(i)), 0), Vector3(0.12, 1.1, 0.12), Vector3(0, 0, -side * 50.0), bark)
+    _pc("cone", Vector3(0, 0.45, 0), Vector3(0.95, 0.9, 0.95), bark.darkened(0.08))
+    _pc("cyl", Vector3(0, h * 0.35, 0), Vector3(0.38, h * 0.7, 0.38), bark)
+    _pb("cone", Vector3(0, h * 0.65, 0), Vector3(rng.randf_range(-0.2, 0.2), h + 0.35, rng.randf_range(-0.2, 0.2)), 0.3, bark)
+    var a0 := rng.randf() * TAU
+    for i in range(4):
+        var a := a0 + TAU * float(i) / 4.0 + rng.randf_range(-0.5, 0.5)
+        var y0 := h * rng.randf_range(0.5, 0.85)
+        var reach := rng.randf_range(0.8, 1.4)
+        var p0 := Vector3(0, y0, 0)
+        var p1 := Vector3(cos(a) * reach, y0 + rng.randf_range(0.4, 0.9), sin(a) * reach)
+        _pb("cone", p0, p1, 0.16, bark)
+        # розгалуження гілки
+        var a2 := a + rng.randf_range(0.5, 0.9) * (1.0 if i % 2 == 0 else -1.0)
+        var p2 := p1 + Vector3(cos(a2) * 0.55, rng.randf_range(0.25, 0.55), sin(a2) * 0.55)
+        _pb("cone", p0.lerp(p1, 0.7), p2, 0.09, bark.darkened(0.05))
+        _pb("cone", p1, p1 + Vector3(cos(a) * 0.4, 0.4, sin(a) * 0.4), 0.07, bark.darkened(0.05))
     _col_cyl(Vector3.ZERO, 0.3, 3.0)
 
+# ---------- Рослинність ----------
 func _p_bush(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, rng.randf() * TAU)
     var c := _jit(Color(0.2, 0.46, 0.15), 0.06, rng)
     var s := rng.randf_range(0.8, 1.4)
-    _part("sphere", Vector3(0, 0.4 * s, 0), Vector3(1.3, 0.9, 1.2) * s, Vector3.ZERO, c)
-    _part("sphere", Vector3(0.5 * s, 0.3 * s, 0.2), Vector3(0.9, 0.7, 0.9) * s, Vector3.ZERO, c.lightened(0.08))
+    for i in range(rng.randi_range(3, 5)):
+        var a := rng.randf() * TAU
+        var r := rng.randf_range(0.0, 0.55) * s
+        var k := rng.randf_range(0.7, 1.1) * s
+        _clump(Vector3(cos(a) * r, 0.3 * k + 0.05, sin(a) * r), Vector3(0.95, 0.75, 0.95) * k, c.darkened(0.12).lerp(c.lightened(0.1), rng.randf()), rng)
+    var kind := rng.randf()
+    if kind < 0.35:
+        for i in range(rng.randi_range(4, 7)):
+            var a := rng.randf() * TAU
+            var r := rng.randf_range(0.35, 0.7) * s
+            _pc("sphere", Vector3(cos(a) * r, rng.randf_range(0.35, 0.6) * s, sin(a) * r), Vector3(0.1, 0.1, 0.1), Color(0.78, 0.1, 0.12))
+    elif kind < 0.5:
+        for i in range(rng.randi_range(4, 6)):
+            var a := rng.randf() * TAU
+            var r := rng.randf_range(0.3, 0.7) * s
+            _pc("sphere", Vector3(cos(a) * r, rng.randf_range(0.4, 0.65) * s, sin(a) * r), Vector3(0.13, 0.1, 0.13), Color(0.96, 0.9, 0.95))
 
 func _p_flowers(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, 0.0)
-    var cols := [Color(0.9, 0.2, 0.2), Color(0.95, 0.85, 0.2), Color(0.95, 0.95, 0.95), Color(0.7, 0.3, 0.9)]
-    for i in range(5):
+    var cols := [Color(0.9, 0.2, 0.2), Color(0.95, 0.85, 0.2), Color(0.95, 0.95, 0.95), Color(0.7, 0.3, 0.9), Color(0.95, 0.5, 0.15)]
+    var main: Color = cols[rng.randi() % cols.size()]
+    var green := Color(0.2, 0.5, 0.15)
+    for i in range(7):
         var ox := rng.randf_range(-0.7, 0.7)
         var oz := rng.randf_range(-0.7, 0.7)
-        var c: Color = cols[rng.randi() % cols.size()]
-        _part("cyl", Vector3(ox, 0.17, oz), Vector3(0.03, 0.35, 0.03), Vector3.ZERO, Color(0.2, 0.5, 0.15))
-        _part("sphere", Vector3(ox, 0.38, oz), Vector3(0.16, 0.12, 0.16), Vector3.ZERO, c)
+        var c: Color = main if rng.randf() < 0.7 else cols[rng.randi() % cols.size()]
+        var fh := rng.randf_range(0.28, 0.46)
+        _pb("cyl", Vector3(ox, 0.0, oz), Vector3(ox + rng.randf_range(-0.05, 0.05), fh, oz + rng.randf_range(-0.05, 0.05)), 0.03, green)
+        _pc("sphere", Vector3(ox, fh, oz), Vector3(0.17, 0.09, 0.17), c)
+        _pc("sphere", Vector3(ox, fh + 0.03, oz), Vector3(0.07, 0.07, 0.07), Color(0.95, 0.8, 0.2))
+    for i in range(4):
+        var a := rng.randf() * TAU
+        _pb("cone", Vector3(cos(a) * 0.2, 0.0, sin(a) * 0.2), Vector3(cos(a) * 0.5, 0.2, sin(a) * 0.5), 0.1, green.darkened(0.1))
 
 func _p_tuft(x: float, z: float, rng: RandomNumberGenerator, dry: bool) -> void:
     _begin(x, z, rng.randf() * TAU)
     var c := Color(0.25, 0.5, 0.15)
     if dry:
         c = Color(0.7, 0.6, 0.3)
-    for i in range(4):
-        var ox := rng.randf_range(-0.25, 0.25)
-        var oz := rng.randf_range(-0.25, 0.25)
-        var hh := rng.randf_range(0.35, 0.6)
-        _part("cone", Vector3(ox, hh * 0.5, oz), Vector3(0.14, hh, 0.14), Vector3(rng.randf_range(-15, 15), 0, rng.randf_range(-15, 15)), _jit(c, 0.06, rng))
+    for i in range(7):
+        var a := rng.randf() * TAU
+        var r := rng.randf_range(0.0, 0.3)
+        var hh := rng.randf_range(0.35, 0.7)
+        var lean := rng.randf_range(0.05, 0.25)
+        var base := Vector3(cos(a) * r, 0.0, sin(a) * r)
+        _pb("cone", base, base + Vector3(cos(a) * lean, hh, sin(a) * lean), 0.1, _jit(c, 0.07, rng).lerp(c.lightened(0.15), float(i) / 7.0))
 
+func _p_reeds(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    var c := Color(0.30, 0.42, 0.18)
+    for i in range(rng.randi_range(7, 11)):
+        var a := rng.randf() * TAU
+        var r := rng.randf_range(0.0, 0.6)
+        var hh := rng.randf_range(0.9, 1.6)
+        var base := Vector3(cos(a) * r, 0.0, sin(a) * r)
+        var tip := base + Vector3(rng.randf_range(-0.15, 0.15), hh, rng.randf_range(-0.15, 0.15))
+        _pb("cyl", base, tip, 0.04, _jit(c, 0.06, rng))
+        if rng.randf() < 0.5:
+            _pb("cyl", tip - Vector3(0, 0.3, 0), tip + Vector3(0, 0.12, 0), 0.09, Color(0.32, 0.2, 0.1))
+
+func _p_bramble(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    var c := Color(0.22, 0.17, 0.1)
+    for i in range(rng.randi_range(6, 9)):
+        var a := rng.randf() * TAU
+        var p0 := Vector3(cos(a) * 0.2, 0.0, sin(a) * 0.2)
+        var p1 := Vector3(cos(a) * rng.randf_range(0.7, 1.2), rng.randf_range(0.4, 0.9), sin(a) * rng.randf_range(0.7, 1.2))
+        _pb("cone", p0, p1, 0.1, _jit(c, 0.04, rng))
+        _pb("cone", p1, p1 + Vector3(cos(a + 0.8) * 0.35, 0.2, sin(a + 0.8) * 0.35), 0.06, c)
+    for i in range(3):
+        _clump(Vector3(rng.randf_range(-0.5, 0.5), 0.45, rng.randf_range(-0.5, 0.5)), Vector3(0.7, 0.4, 0.7), Color(0.18, 0.34, 0.12), rng)
+    for i in range(rng.randi_range(2, 5)):
+        _pc("sphere", Vector3(rng.randf_range(-0.7, 0.7), rng.randf_range(0.3, 0.7), rng.randf_range(-0.7, 0.7)), Vector3(0.09, 0.09, 0.09), Color(0.35, 0.1, 0.35))
+
+func _p_mushroom(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, 0.0)
+    for i in range(rng.randi_range(3, 5)):
+        var a := rng.randf() * TAU
+        var r := rng.randf_range(0.0, 0.55)
+        var ox := cos(a) * r
+        var oz := sin(a) * r
+        var s := rng.randf_range(0.6, 1.4)
+        var cap := Color(0.8, 0.15, 0.12)
+        var spots := true
+        if rng.randf() < 0.4:
+            cap = Color(0.65, 0.5, 0.3)
+            spots = false
+        _pc("cyl", Vector3(ox, 0.12 * s, oz), Vector3(0.1, 0.25 * s, 0.1), Color(0.9, 0.88, 0.8))
+        _pc("sphere", Vector3(ox, 0.27 * s, oz), Vector3(0.36, 0.2, 0.36) * s, cap)
+        if spots:
+            for k in range(3):
+                var sa := rng.randf() * TAU
+                _pc("sphere", Vector3(ox + cos(sa) * 0.09 * s, 0.34 * s, oz + sin(sa) * 0.09 * s), Vector3(0.05, 0.03, 0.05) * s, Color(0.96, 0.94, 0.88))
+
+# Ведьмине кільце: гриби по колу.
+func _p_mushroom_ring(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, 0.0)
+    var n := rng.randi_range(9, 13)
+    for i in range(n):
+        var a := TAU * float(i) / float(n) + rng.randf_range(-0.1, 0.1)
+        var r := 1.25 + rng.randf_range(-0.1, 0.1)
+        var s := rng.randf_range(0.7, 1.2)
+        _pc("cyl", Vector3(cos(a) * r, 0.12 * s, sin(a) * r), Vector3(0.09, 0.24 * s, 0.09), Color(0.9, 0.88, 0.8))
+        _pc("sphere", Vector3(cos(a) * r, 0.27 * s, sin(a) * r), Vector3(0.3, 0.17, 0.3) * s, Color(0.85, 0.3, 0.2).lerp(Color(0.8, 0.75, 0.9), rng.randf() * 0.3))
+    _pc("cyl", Vector3(0, 0.015, 0), Vector3(2.0, 0.02, 2.0), Color(0.14, 0.26, 0.1))
+
+# ---------- Каміння ----------
 func _p_rock(x: float, z: float, rng: RandomNumberGenerator, icy: bool) -> void:
     _begin(x, z, rng.randf() * TAU)
     var s := rng.randf_range(0.7, 1.8)
     var c := _stone(rng)
     if icy:
-        c = Color(0.7, 0.85, 0.95)
-    _part("sphere", Vector3(0, s * 0.35, 0), Vector3(s * 1.3, s * 0.9, s * 1.1), Vector3(0, rng.randf() * 90.0, 0), c)
-    _part("sphere", Vector3(s * 0.7, s * 0.2, s * 0.3), Vector3(s * 0.7, s * 0.5, s * 0.6), Vector3.ZERO, c.darkened(0.08))
-    _col_cyl(Vector3.ZERO, s * 0.6, 1.2)
+        c = Color(0.62, 0.8, 0.92).lerp(_stone(rng), 0.15)
+    var top := 0.9 * s
+    _chunk_of_rock(Vector3(0, s * 0.3, 0), Vector3(s * 1.35, s * 0.95, s * 1.15), c, rng)
+    for i in range(rng.randi_range(1, 3)):
+        var a := rng.randf() * TAU
+        var k := rng.randf_range(0.4, 0.7)
+        _chunk_of_rock(Vector3(cos(a) * s * 0.7, s * k * 0.2, sin(a) * s * 0.65), Vector3(s * k * 1.2, s * k * 0.8, s * k), c.darkened(rng.randf_range(0.04, 0.16)), rng)
+    for i in range(rng.randi_range(1, 3)):
+        var a := rng.randf() * TAU
+        _chunk_of_rock(Vector3(cos(a) * s * 1.05, 0.06, sin(a) * s * 1.0), Vector3(0.22, 0.14, 0.2), c.darkened(0.1), rng)
+    if icy:
+        _chunk_of_rock(Vector3(0, s * 0.62, 0), Vector3(s * 0.95, s * 0.35, s * 0.8), Color(0.95, 0.97, 1.0), rng)
+        for i in range(2):
+            var a := rng.randf() * TAU
+            _pb("cone", Vector3(cos(a) * s * 0.35, s * 0.4, sin(a) * s * 0.35), Vector3(cos(a) * s * 0.5, s * rng.randf_range(1.0, 1.4), sin(a) * s * 0.5), 0.22, Color(0.7, 0.88, 1.0))
+    elif rng.randf() < 0.45:
+        _chunk_of_rock(Vector3(rng.randf_range(-0.2, 0.2) * s, s * 0.62, rng.randf_range(-0.2, 0.2) * s), Vector3(s * 0.75, s * 0.22, s * 0.65), Color(0.22, 0.4, 0.14).lerp(c, 0.1), rng)
+    _col_cyl(Vector3.ZERO, s * 0.62, 1.2)
 
 func _p_stump(x: float, z: float, rng: RandomNumberGenerator) -> void:
-    _begin(x, z, 0.0)
-    _part("cyl", Vector3(0, 0.25, 0), Vector3(0.6, 0.5, 0.6), Vector3.ZERO, _jit(Color(0.38, 0.25, 0.14), 0.04, rng))
-    _part("cyl", Vector3(0, 0.51, 0), Vector3(0.5, 0.03, 0.5), Vector3.ZERO, Color(0.6, 0.45, 0.28))
-    _col_cyl(Vector3.ZERO, 0.32, 0.6)
+    _begin(x, z, rng.randf() * TAU)
+    _m_stump(rng)
+
+func _m_stump(rng: RandomNumberGenerator) -> void:
+    var bark := _jit(Color(0.38, 0.25, 0.14), 0.04, rng)
+    _pc("cone", Vector3(0, 0.3, 0), Vector3(0.95, 0.6, 0.95), bark.darkened(0.06))
+    _pc("cyl", Vector3(0, 0.27, 0), Vector3(0.62, 0.54, 0.62), bark)
+    _pc("cyl", Vector3(0, 0.545, 0), Vector3(0.56, 0.03, 0.56), Color(0.66, 0.5, 0.31))
+    _pc("cyl", Vector3(0, 0.56, 0), Vector3(0.4, 0.03, 0.4), Color(0.55, 0.4, 0.24))
+    _pc("cyl", Vector3(0, 0.575, 0), Vector3(0.2, 0.03, 0.2), Color(0.66, 0.5, 0.31))
+    for i in range(2):
+        var a := rng.randf() * TAU
+        _pb("cone", Vector3(cos(a) * 0.2, 0.12, sin(a) * 0.2), Vector3(cos(a) * 0.65, 0.02, sin(a) * 0.65), 0.2, bark.darkened(0.12))
+    if rng.randf() < 0.3:
+        var a := rng.randf() * TAU
+        _pc("sphere", Vector3(cos(a) * 0.32, 0.3, sin(a) * 0.32), Vector3(0.18, 0.1, 0.18), Color(0.85, 0.5, 0.2))
 
 func _p_log(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, rng.randf() * PI)
-    _part("cyl", Vector3(0, 0.3, 0), Vector3(0.6, 2.4, 0.6), Vector3(0, 0, 90), _jit(Color(0.35, 0.23, 0.12), 0.04, rng))
-    _col_box(Vector3.ZERO, Vector3(2.4, 0.6, 0.6))
+    _m_log(rng, true)
 
-func _p_mushroom(x: float, z: float, rng: RandomNumberGenerator) -> void:
-    _begin(x, z, 0.0)
+# Колода уздовж X: кора, торці з кільцями, пеньки гілок, мох. solid=false — лавка біля вогнища теж тверда, тож завжди true.
+func _m_log(rng: RandomNumberGenerator, solid: bool) -> void:
+    var bark := _jit(Color(0.35, 0.23, 0.12), 0.04, rng)
+    _pb("cyl", Vector3(-1.2, 0.3, 0), Vector3(1.2, 0.3, 0), 0.6, bark)
+    for sx in [-1.0, 1.0]:
+        var e := float(sx) * 1.2
+        _pb("cyl", Vector3(e - float(sx) * 0.01, 0.3, 0), Vector3(e + float(sx) * 0.02, 0.3, 0), 0.5, Color(0.66, 0.5, 0.31))
+        _pb("cyl", Vector3(e, 0.3, 0), Vector3(e + float(sx) * 0.035, 0.3, 0), 0.3, Color(0.52, 0.38, 0.22))
+    var bx := rng.randf_range(-0.6, 0.6)
+    _pb("cyl", Vector3(bx, 0.45, 0.2), Vector3(bx + 0.1, 0.78, 0.3), 0.14, bark.darkened(0.1))
+    if rng.randf() < 0.5:
+        _chunk_of_rock(Vector3(rng.randf_range(-0.7, 0.7), 0.58, 0), Vector3(0.9, 0.18, 0.4), Color(0.22, 0.4, 0.14), rng)
+    if solid:
+        _col_box(Vector3.ZERO, Vector3(2.4, 0.6, 0.6))
+
+func _p_fallen_tree(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * PI)
+    var bark := _jit(Color(0.31, 0.2, 0.11), 0.04, rng)
+    _pb("cyl", Vector3(-2.2, 0.4, 0), Vector3(2.0, 0.4, 0.1), 0.8, bark)
+    _pb("cyl", Vector3(2.0, 0.4, 0.1), Vector3(3.2, 0.42, 0.25), 0.55, bark.darkened(0.04))
+    _pb("cone", Vector3(-2.2, 0.4, 0), Vector3(-2.35, 0.95, 0.15), 0.8, Color(0.55, 0.42, 0.26))
+    for k in range(4):
+        var t := rng.randf_range(-1.6, 2.6)
+        var sd := 1.0 if k % 2 == 0 else -1.0
+        _pb("cone", Vector3(t, 0.55, 0.05 * sd), Vector3(t + 0.3, 1.0 + rng.randf() * 0.5, 0.7 * sd), 0.14, bark.darkened(0.1))
     for i in range(3):
-        var ox := rng.randf_range(-0.5, 0.5)
-        var oz := rng.randf_range(-0.5, 0.5)
-        var s := rng.randf_range(0.7, 1.4)
-        var cap := Color(0.8, 0.15, 0.12)
-        if rng.randf() < 0.4:
-            cap = Color(0.65, 0.5, 0.3)
-        _part("cyl", Vector3(ox, 0.12 * s, oz), Vector3(0.1, 0.25 * s, 0.1), Vector3.ZERO, Color(0.9, 0.88, 0.8))
-        _part("sphere", Vector3(ox, 0.27 * s, oz), Vector3(0.34, 0.2, 0.34) * s, Vector3.ZERO, cap)
+        _clump(Vector3(rng.randf_range(0.6, 3.0), 0.7, rng.randf_range(-0.5, 0.6)), Vector3(0.9, 0.55, 0.9), Color(0.17, 0.4, 0.14), rng)
+    _pc("cone", Vector3(-2.25, 0.3, 0), Vector3(1.3, 0.6, 1.3), bark.darkened(0.12))
+    _col_box(Vector3(0.3, 0, 0), Vector3(5.2, 0.8, 0.8))
 
+# ---------- Ферма ----------
 func _p_haystack(x: float, z: float, rng: RandomNumberGenerator) -> void:
-    _begin(x, z, 0.0)
-    _part("cyl", Vector3(0, 0.6, 0), Vector3(1.5, 1.2, 1.5), Vector3.ZERO, Color(0.8, 0.68, 0.25))
-    _part("cone", Vector3(0, 1.5, 0), Vector3(1.6, 0.9, 1.6), Vector3.ZERO, Color(0.72, 0.6, 0.2))
-    _col_cyl(Vector3.ZERO, 0.8, 1.8)
+    _begin(x, z, rng.randf() * TAU)
+    _m_haystack(rng)
+
+func _m_haystack(rng: RandomNumberGenerator) -> void:
+    var straw := _jit(Color(0.82, 0.7, 0.27), 0.04, rng)
+    if rng.randf() < 0.4:
+        # круглий тюк на боці
+        _pb("cyl", Vector3(0, 0.7, -0.6), Vector3(0, 0.7, 0.6), 1.4, straw)
+        for sz in [-1.0, 1.0]:
+            _pb("cyl", Vector3(0, 0.7, float(sz) * 0.601), Vector3(0, 0.7, float(sz) * 0.62), 1.1, straw.darkened(0.12))
+            _pb("cyl", Vector3(0, 0.7, float(sz) * 0.62), Vector3(0, 0.7, float(sz) * 0.64), 0.6, straw.lightened(0.05))
+        _part("torus", Vector3(0, 0.7, -0.15), Vector3(1.45, 0.25, 1.45), Vector3(90, 0, 0), Color(0.4, 0.3, 0.12))
+        _col_cyl(Vector3.ZERO, 0.85, 1.4)
+        return
+    _pc("cyl", Vector3(0, 0.6, 0), Vector3(1.5, 1.2, 1.5), straw)
+    _pc("cone", Vector3(0, 1.55, 0), Vector3(1.65, 1.0, 1.65), straw.darkened(0.08))
+    _pc("torus", Vector3(0, 1.15, 0), Vector3(1.52, 0.5, 1.52), straw.darkened(0.25))
+    for i in range(6):
+        var a := rng.randf() * TAU
+        _pb("cyl", Vector3(cos(a) * 0.9, 0.04, sin(a) * 0.9), Vector3(cos(a) * 1.25, 0.05, sin(a) * 1.25), 0.05, straw.lightened(0.1))
+    _col_cyl(Vector3.ZERO, 0.8, 1.9)
 
 func _p_fence(x: float, z: float, rng: RandomNumberGenerator) -> void:
-    _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
-    var wood := Color(0.42, 0.28, 0.14)
-    for i in range(4):
-        _part("cyl", Vector3(-1.5 + float(i), 0.5, 0), Vector3(0.14, 1.0, 0.14), Vector3.ZERO, wood)
-    _part("box", Vector3(0, 0.4, 0), Vector3(3.2, 0.08, 0.08), Vector3.ZERO, wood.lightened(0.05))
-    _part("box", Vector3(0, 0.8, 0), Vector3(3.2, 0.08, 0.08), Vector3.ZERO, wood.lightened(0.05))
-    _col_box(Vector3.ZERO, Vector3(3.2, 1.0, 0.25))
+    _begin(x, z, rng.randf() * TAU)
+    _fence_run(-1.6, 0.0, 1.6, 0.0, _jit(Color(0.42, 0.28, 0.14), 0.04, rng), rng)
 
 func _p_hut(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
-    _part("box", Vector3(0, 1.0, 0), Vector3(3.2, 2.0, 3.0), Vector3.ZERO, Color(0.72, 0.62, 0.45))
-    _part("cone", Vector3(0, 2.7, 0), Vector3(4.4, 1.6, 4.4), Vector3.ZERO, Color(0.7, 0.58, 0.22))
-    _part("box", Vector3(0, 0.7, -1.52), Vector3(0.8, 1.4, 0.08), Vector3.ZERO, Color(0.25, 0.15, 0.08))
-    _part("box", Vector3(1.0, 1.3, -1.52), Vector3(0.5, 0.5, 0.08), Vector3.ZERO, Color(0.2, 0.25, 0.3))
-    _col_box(Vector3(0, 0, 0), Vector3(3.2, 2.2, 3.0))
+    _m_hut(rng)
 
+func _m_hut(rng: RandomNumberGenerator) -> void:
+    var wall := _jit(Color(0.74, 0.64, 0.46), 0.03, rng)
+    var timber := Color(0.30, 0.19, 0.10)
+    var roof := Color(0.66, 0.52, 0.2) if rng.randf() < 0.55 else Color(0.52, 0.22, 0.15)
+    _pc("box", Vector3(0, 0.12, 0), Vector3(3.6, 0.24, 3.4), Color(0.42, 0.4, 0.37))
+    _pc("box", Vector3(0, 1.15, 0), Vector3(3.2, 1.9, 3.0), wall)
+    for sx in [-1.0, 1.0]:
+        for sz in [-1.0, 1.0]:
+            _pc("box", Vector3(float(sx) * 1.6, 1.15, float(sz) * 1.5), Vector3(0.22, 1.95, 0.22), timber)
+    for sz in [-1.0, 1.0]:
+        _pc("box", Vector3(0, 2.0, float(sz) * 1.52), Vector3(3.2, 0.14, 0.1), timber)
+        _pc("box", Vector3(0, 0.45, float(sz) * 1.52), Vector3(3.2, 0.1, 0.1), timber)
+    _pc("wedge", Vector3(0, 2.6, 0), Vector3(3.95, 1.5, 4.1), roof)
+    _pc("box", Vector3(0, 3.36, 0), Vector3(4.0, 0.12, 0.22), roof.darkened(0.3))
+    for i in range(5):
+        _pc("box", Vector3(-1.5 + 0.75 * float(i), 2.12, -2.06), Vector3(0.06, 0.1, 0.1), timber)
+    # комин
+    _pc("box", Vector3(1.0, 2.9, 0.75), Vector3(0.6, 1.8, 0.6), Color(0.45, 0.42, 0.4))
+    _pc("box", Vector3(1.0, 3.84, 0.75), Vector3(0.78, 0.12, 0.78), Color(0.3, 0.28, 0.27))
+    # двері й вікна (перед — у бік -Z)
+    _pc("box", Vector3(0, 0.82, -1.52), Vector3(1.05, 1.6, 0.06), timber)
+    _pc("box", Vector3(0, 0.75, -1.55), Vector3(0.82, 1.45, 0.08), Color(0.24, 0.14, 0.08))
+    _pc("sphere", Vector3(0.3, 0.8, -1.6), Vector3(0.08, 0.08, 0.06), Color(0.8, 0.65, 0.2))
+    _pc("box", Vector3(0, 0.07, -1.95), Vector3(1.4, 0.14, 0.7), Color(0.46, 0.44, 0.4))
+    _pc("box", Vector3(1.0, 1.4, -1.52), Vector3(0.72, 0.62, 0.06), timber)
+    _pc("box", Vector3(1.0, 1.4, -1.55), Vector3(0.52, 0.42, 0.08), Color(0.2, 0.28, 0.36))
+    _pc("box", Vector3(1.0, 1.4, -1.57), Vector3(0.52, 0.05, 0.08), timber)
+    for sx in [-1.0, 1.0]:
+        _pc("box", Vector3(1.0 + float(sx) * 0.42, 1.4, -1.56), Vector3(0.18, 0.56, 0.05), timber.lightened(0.1))
+    _pc("box", Vector3(1.62, 1.35, 0.2), Vector3(0.08, 0.42, 0.52), Color(0.2, 0.28, 0.36))
+    _col_box(Vector3.ZERO, Vector3(3.4, 2.4, 3.2))
+
+func _p_well(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    _m_well(rng, false)
+
+func _m_well(rng: RandomNumberGenerator, dry: bool) -> void:
+    var st := _stone(rng).lightened(0.05)
+    _pc("cyl", Vector3(0, 0.45, 0), Vector3(1.6, 0.9, 1.6), st)
+    _pc("torus", Vector3(0, 0.9, 0), Vector3(1.55, 0.3, 1.55), st.lightened(0.1))
+    _pc("cyl", Vector3(0, 0.86, 0), Vector3(1.15, 0.05, 1.15), Color(0.03, 0.04, 0.05) if dry else Color(0.08, 0.16, 0.22))
+    for i in range(8):
+        var a := TAU * float(i) / 8.0
+        _pc("box", Vector3(cos(a) * 0.8, 0.45 + 0.1 * float(i % 2), sin(a) * 0.8), Vector3(0.1, 0.9, 0.3), st.darkened(0.08 * float(i % 3)))
+    var wood := Color(0.36, 0.24, 0.12)
+    for sx in [-1.0, 1.0]:
+        _pc("box", Vector3(float(sx) * 0.75, 1.4, 0), Vector3(0.14, 1.6, 0.14), wood)
+    _pb("cyl", Vector3(-0.75, 1.55, 0), Vector3(0.75, 1.55, 0), 0.12, wood.lightened(0.05))
+    _pc("wedge", Vector3(0, 2.4, 0), Vector3(2.0, 0.7, 1.6), Color(0.5, 0.25, 0.15))
+    if not dry:
+        _pb("cyl", Vector3(0, 1.5, 0), Vector3(0, 1.0, 0), 0.03, Color(0.5, 0.4, 0.25))
+        _pc("cyl", Vector3(0, 0.88, 0.0), Vector3(0.26, 0.24, 0.26), wood.darkened(0.1))
+    _col_cyl(Vector3.ZERO, 0.9, 2.0)
+
+func _p_cart(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    _m_cart(rng, 0)
+
+# variant: 0 — з сіном, 1 — зламаний (без колеса, нахилений), 2 — обгорілий
+func _m_cart(rng: RandomNumberGenerator, variant: int) -> void:
+    var wood := _jit(Color(0.42, 0.28, 0.14), 0.04, rng)
+    if variant == 2:
+        wood = Color(0.09, 0.07, 0.06)
+    var tilt := 0.0 if variant != 1 else 9.0
+    _part("box", Vector3(0, 0.78, 0), Vector3(2.4, 0.12, 1.3), Vector3(0, 0, tilt), wood.darkened(0.1))
+    for sz in [-1.0, 1.0]:
+        _part("box", Vector3(0, 1.08, float(sz) * 0.64), Vector3(2.4, 0.5, 0.08), Vector3(0, 0, tilt), wood)
+    for sx in [-1.0, 1.0]:
+        _part("box", Vector3(float(sx) * 1.18, 1.08, 0), Vector3(0.08, 0.5, 1.3), Vector3(0, 0, tilt), wood)
+    _pb("box", Vector3(1.1, 0.75, -0.4), Vector3(3.2, 0.5, -0.4), 0.1, wood.lightened(0.05))
+    _pb("box", Vector3(1.1, 0.75, 0.4), Vector3(3.2, 0.5, 0.4), 0.1, wood.lightened(0.05))
+    for sz in [-1.0, 1.0]:
+        if variant == 1 and sz > 0.0:
+            _part("torus", Vector3(-1.4, 0.07, 1.9), Vector3(1.0, 0.18, 1.0), Vector3(0, 0, 0), wood.darkened(0.2))
+            continue
+        var wy := 0.5
+        _part("torus", Vector3(0, wy, float(sz) * 0.82), Vector3(1.0, 0.2, 1.0), Vector3(90, 0, 0), wood.darkened(0.2))
+        _part("box", Vector3(0, wy, float(sz) * 0.82), Vector3(0.9, 0.07, 0.05), Vector3(0, 0, 0), wood.darkened(0.1))
+        _part("box", Vector3(0, wy, float(sz) * 0.82), Vector3(0.07, 0.9, 0.05), Vector3(0, 0, 0), wood.darkened(0.1))
+        _pc("cyl", Vector3(0, wy, float(sz) * 0.82), Vector3(0.12, 0.12, 0.12), wood.darkened(0.3))
+    if variant == 0:
+        _pc("leaf", Vector3(0, 1.3, 0), Vector3(2.0, 0.8, 1.1), Color(0.82, 0.7, 0.27))
+        _pc("leaf", Vector3(-0.3, 1.5, 0.1), Vector3(1.2, 0.5, 0.8), Color(0.75, 0.62, 0.22))
+    _col_box(Vector3(0.2, 0, 0), Vector3(3.4, 1.0, 1.4))
+
+func _p_scarecrow(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    _m_scarecrow(rng)
+
+func _m_scarecrow(rng: RandomNumberGenerator) -> void:
+    var wood := Color(0.36, 0.24, 0.12)
+    var cloth := Color.from_hsv(rng.randf_range(0.0, 0.12), 0.45, 0.45)
+    _pb("cyl", Vector3(0, 0, 0), Vector3(0, 2.3, 0), 0.1, wood)
+    _pb("cyl", Vector3(-0.95, 1.7, 0), Vector3(0.95, 1.55, 0), 0.08, wood)
+    _pc("box", Vector3(0, 1.55, 0), Vector3(0.62, 0.8, 0.34), cloth)
+    _pc("box", Vector3(0, 1.1, 0), Vector3(0.7, 0.18, 0.4), cloth.darkened(0.2))
+    _pc("sphere", Vector3(0, 2.05, 0), Vector3(0.42, 0.44, 0.42), Color(0.78, 0.66, 0.4))
+    _pc("cyl", Vector3(0, 2.28, 0), Vector3(0.78, 0.04, 0.78), Color(0.36, 0.25, 0.12))
+    _pc("cyl", Vector3(0, 2.42, 0), Vector3(0.4, 0.28, 0.4), Color(0.36, 0.25, 0.12))
+    for sx in [-1.0, 1.0]:
+        for k in range(3):
+            _pb("cone", Vector3(float(sx) * (0.7 + 0.1 * float(k)), 1.6, 0), Vector3(float(sx) * (0.9 + 0.1 * float(k)), 1.3 - 0.06 * float(k), 0.02 * float(k)), 0.07, Color(0.85, 0.72, 0.3))
+    _col_cyl(Vector3.ZERO, 0.3, 2.2)
+
+func _p_crops(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * PI)
+    _m_crops(rng)
+
+# Грядки: ґрунтові борозни з рядами пшениці, капусти або гарбузів.
+func _m_crops(rng: RandomNumberGenerator) -> void:
+    var kind := rng.randi_range(0, 2)
+    var soil := Color(0.2, 0.13, 0.08)
+    for r in range(3):
+        var zz := (float(r) - 1.0) * 0.85
+        _pc("box", Vector3(0, 0.07, zz), Vector3(3.0, 0.14, 0.5), soil.lightened(0.04 * float(r)))
+        for k in range(7):
+            var xx := -1.35 + 0.45 * float(k) + rng.randf_range(-0.04, 0.04)
+            match kind:
+                0:
+                    _pb("cone", Vector3(xx, 0.1, zz), Vector3(xx + 0.05, 0.85 + rng.randf() * 0.2, zz), 0.16, _jit(Color(0.85, 0.7, 0.25), 0.05, rng))
+                    _pb("cone", Vector3(xx, 0.1, zz + 0.12), Vector3(xx - 0.05, 0.7, zz + 0.2), 0.1, Color(0.6, 0.6, 0.2))
+                1:
+                    _clump(Vector3(xx, 0.28, zz), Vector3(0.4, 0.32, 0.4), _jit(Color(0.34, 0.55, 0.22), 0.05, rng), rng)
+                _:
+                    _pc("sphere", Vector3(xx, 0.24, zz), Vector3(0.36, 0.28, 0.36), _jit(Color(0.9, 0.45, 0.1), 0.05, rng))
+                    _pc("cyl", Vector3(xx, 0.42, zz), Vector3(0.05, 0.1, 0.05), Color(0.25, 0.4, 0.15))
+
+func _p_beehive(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    var wood := Color(0.55, 0.42, 0.22)
+    for sx in [-1.0, 1.0]:
+        _pc("box", Vector3(float(sx) * 0.45, 0.2, 0), Vector3(0.1, 0.4, 0.5), Color(0.34, 0.22, 0.12))
+    for i in range(3):
+        _pc("box", Vector3(0, 0.55 + 0.2 * float(i), 0), Vector3(0.85, 0.2, 0.7), wood.lightened(0.04 * float(i % 2)))
+    _pc("wedge", Vector3(0, 1.25, 0), Vector3(1.0, 0.35, 0.85), Color(0.7, 0.68, 0.62))
+    _pc("box", Vector3(0, 0.55, -0.355), Vector3(0.2, 0.05, 0.02), Color(0.08, 0.06, 0.04))
+    _col_cyl(Vector3.ZERO, 0.55, 1.3)
+
+func _p_woodpile(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    var bark := Color(0.38, 0.25, 0.13)
+    for sx in [-1.0, 1.0]:
+        _pc("box", Vector3(float(sx) * 1.3, 0.5, 0), Vector3(0.12, 1.0, 0.7), Color(0.3, 0.2, 0.1))
+    for row in range(3):
+        var n := 4 - (1 if row == 2 else 0)
+        for k in range(n):
+            var zz := -0.27 + 0.18 * float(k) + (0.09 if row == 1 else 0.0) - (0.09 if row == 2 else 0.0) * 0.0
+            var yy := 0.12 + 0.22 * float(row)
+            var c := _jit(bark, 0.05, rng)
+            _pb("cyl", Vector3(-1.2, yy, zz * 1.6), Vector3(1.2, yy, zz * 1.6), 0.24, c)
+            _pb("cyl", Vector3(1.2, yy, zz * 1.6), Vector3(1.215, yy, zz * 1.6), 0.18, Color(0.7, 0.55, 0.35))
+    _pb("cyl", Vector3(-1.5, 0.12, 1.1), Vector3(-0.4, 0.12, 1.2), 0.22, bark)
+    _col_box(Vector3.ZERO, Vector3(2.7, 0.9, 0.9))
+# ---------- Пустеля ----------
 func _p_cactus(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, rng.randf() * TAU)
-    var h := rng.randf_range(1.6, 2.8)
     var c := _jit(Color(0.2, 0.5, 0.22), 0.04, rng)
-    _part("cyl", Vector3(0, h * 0.5, 0), Vector3(0.5, h, 0.5), Vector3.ZERO, c)
-    var side := 1.0
-    if rng.randf() < 0.5:
-        side = -1.0
-    _part("cyl", Vector3(side * 0.4, h * 0.5, 0), Vector3(0.28, 0.6, 0.28), Vector3(0, 0, 90), c)
-    _part("cyl", Vector3(side * 0.7, h * 0.5 + 0.35, 0), Vector3(0.28, 0.75, 0.28), Vector3.ZERO, c)
+    if rng.randf() < 0.3:
+        # бочкоподібний кактус із квіткою
+        var s := rng.randf_range(0.8, 1.3)
+        _pc("sphere", Vector3(0, 0.4 * s, 0), Vector3(0.9, 0.85, 0.9) * s, c.darkened(0.05))
+        for i in range(8):
+            var a := TAU * float(i) / 8.0
+            _pb("cyl", Vector3(cos(a) * 0.2 * s, 0.1, sin(a) * 0.2 * s), Vector3(cos(a) * 0.28 * s, 0.65 * s, sin(a) * 0.28 * s), 0.05, c.lightened(0.15))
+        _pc("sphere", Vector3(0, 0.82 * s, 0), Vector3(0.22, 0.12, 0.22), Color(0.95, 0.4, 0.55))
+        _col_cyl(Vector3.ZERO, 0.45 * s, 1.0)
+        return
+    var h := rng.randf_range(1.8, 2.8)
+    _pc("cyl", Vector3(0, h * 0.5, 0), Vector3(0.5, h, 0.5), c)
+    _pc("sphere", Vector3(0, h, 0), Vector3(0.5, 0.45, 0.5), c.lightened(0.04))
+    for i in range(6):
+        var a := TAU * float(i) / 6.0
+        _pb("cyl", Vector3(cos(a) * 0.24, 0.2, sin(a) * 0.24), Vector3(cos(a) * 0.25, h - 0.1, sin(a) * 0.25), 0.04, c.lightened(0.14))
+    var a0 := rng.randf() * TAU
+    for i in range(rng.randi_range(1, 2)):
+        var sd := 1.0 if i == 0 else -1.0
+        var ya := h * rng.randf_range(0.4, 0.65)
+        var dir := Vector3(cos(a0), 0, sin(a0)) * sd
+        _pb("cyl", Vector3(0, ya, 0) + dir * 0.1, Vector3(0, ya, 0) + dir * 0.7, 0.28, c)
+        _pb("cyl", Vector3(0, ya, 0) + dir * 0.7, Vector3(0, ya + rng.randf_range(0.6, 0.95), 0) + dir * 0.7, 0.26, c)
+        _pc("sphere", Vector3(0, ya + 0.8, 0) + dir * 0.7, Vector3(0.26, 0.2, 0.26), c.lightened(0.05))
+    if rng.randf() < 0.35:
+        _pc("sphere", Vector3(0, h + 0.2, 0), Vector3(0.2, 0.12, 0.2), Color(0.95, 0.35, 0.5))
     _col_cyl(Vector3.ZERO, 0.4, 2.0)
 
 func _p_bones(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, rng.randf() * TAU)
-    var b := Color(0.9, 0.87, 0.78)
-    _part("sphere", Vector3(0, 0.15, 0), Vector3(0.3, 0.26, 0.3), Vector3.ZERO, b)
+    _m_bones(rng)
+
+func _m_skull(lpos: Vector3, s: float, yaw: float, b: Color) -> void:
+    _part("sphere", lpos + Vector3(0, 0.13 * s, 0), Vector3(0.3, 0.26, 0.32) * s, Vector3(0, yaw, 0), b)
+    _part("box", lpos + Vector3(0, 0.04 * s, -0.12 * s), Vector3(0.18, 0.08, 0.14) * s, Vector3(0, yaw, 0), b.darkened(0.08))
+    for sx in [-1.0, 1.0]:
+        var o := Vector3(float(sx) * 0.07 * s, 0.15 * s, -0.12 * s).rotated(Vector3.UP, deg_to_rad(yaw))
+        _pc("sphere", lpos + o, Vector3(0.07, 0.08, 0.05) * s, Color(0.04, 0.03, 0.03))
+
+func _m_bones(rng: RandomNumberGenerator) -> void:
+    var b := _jit(Color(0.9, 0.87, 0.78), 0.04, rng)
+    _m_skull(Vector3(0, 0, -0.1), 1.0, rng.randf_range(-40, 40), b)
+    for i in range(rng.randi_range(3, 5)):
+        var a := rng.randf_range(-0.9, 0.9)
+        var p0 := Vector3(0.1 * float(i) - 0.15, 0.05, 0.2)
+        var p1 := p0 + Vector3(sin(a) * 0.35, 0.0, cos(a) * 0.55)
+        _pb("cyl", p0, p1, 0.06, b)
+        _pb("cyl", p1, p1 + (p1 - p0).normalized() * 0.04, 0.1, b.lightened(0.05))
+    var la := rng.randf() * TAU
+    var q0 := Vector3(0.5, 0.05, 0.5)
+    _pb("cyl", q0, q0 + Vector3(cos(la), 0, sin(la)) * 0.7, 0.07, b.darkened(0.04))
+
+func _p_skull_pile(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    var b := Color(0.88, 0.84, 0.74)
+    _pc("cyl", Vector3(0, 0.05, 0), Vector3(2.0, 0.1, 2.0), Color(0.5, 0.4, 0.26))
+    var n := rng.randi_range(6, 9)
+    for i in range(n):
+        var ring := 0 if i < 5 else 1
+        var a := TAU * float(i) / 5.0 + rng.randf_range(-0.2, 0.2)
+        var r := 0.55 if ring == 0 else 0.0
+        _m_skull(Vector3(cos(a) * r, 0.0 if ring == 0 else 0.22, sin(a) * r), rng.randf_range(0.85, 1.15), rad_to_deg(a) + 90.0, _jit(b, 0.05, rng))
+    for i in range(5):
+        var a := rng.randf() * TAU
+        var p0 := Vector3(cos(a) * 0.5, 0.2, sin(a) * 0.5)
+        _pb("cyl", p0, p0 + Vector3(cos(a + 0.4), rng.randf_range(0.0, 0.4), sin(a + 0.4)) * 0.8, 0.06, b)
+    _col_cyl(Vector3.ZERO, 0.8, 0.5)
+
+func _p_ribcage(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    var b := Color(0.86, 0.82, 0.72)
+    _pb("cyl", Vector3(-2.0, 0.55, 0), Vector3(2.0, 0.4, 0), 0.16, b)
+    for i in range(7):
+        var xx := -1.4 + 0.5 * float(i)
+        var hh := 1.15 - 0.09 * absf(float(i) - 3.0)
+        for sz in [-1.0, 1.0]:
+            var p0 := Vector3(xx, 0.5, 0)
+            var p1 := Vector3(xx, 0.5 + hh * 0.7, float(sz) * 0.8)
+            var p2 := Vector3(xx + 0.05, 0.08, float(sz) * 1.0)
+            _pb("cyl", p0, p1, 0.07, b)
+            _pb("cyl", p1, p2, 0.065, b.darkened(0.04))
+    _m_skull(Vector3(2.4, 0.0, 0.3), 2.2, 20.0, b)
     for i in range(4):
-        _part("box", Vector3(0.4 + 0.2 * float(i), 0.05, rng.randf_range(-0.2, 0.2)), Vector3(0.05, 0.05, 0.5), Vector3(0, rng.randf_range(-40, 40), 0), b)
+        _pb("cyl", Vector3(2.0 + 0.0, 0.2, 0.1 * float(i)), Vector3(2.6, 0.06, -0.6 + 0.5 * float(i)), 0.07, b)
+    _col_box(Vector3(0, 0, 0), Vector3(3.2, 0.5, 0.5))
 
 func _p_dune(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, rng.randf() * TAU)
-    _part("sphere", Vector3(0, 0.0, 0), Vector3(rng.randf_range(5.0, 9.0), rng.randf_range(1.6, 2.6), rng.randf_range(4.0, 7.0)), Vector3.ZERO, _jit(Color(0.82, 0.7, 0.42), 0.03, rng))
+    var sand := _jit(Color(0.82, 0.7, 0.42), 0.03, rng)
+    var w := rng.randf_range(5.0, 9.0)
+    var d := rng.randf_range(4.0, 7.0)
+    var h := rng.randf_range(1.6, 2.6)
+    _pc("sphere", Vector3(0, 0.0, 0), Vector3(w, h, d), sand)
+    _pc("sphere", Vector3(w * 0.28, -0.1, d * 0.12), Vector3(w * 0.55, h * 0.7, d * 0.6), sand.lightened(0.05))
+    _pc("sphere", Vector3(-w * 0.3, -0.1, -d * 0.15), Vector3(w * 0.5, h * 0.6, d * 0.5), sand.darkened(0.05))
+    # гребінь — тонка світла смуга
+    _part("sphere", Vector3(0, h * 0.35, 0), Vector3(w * 0.7, h * 0.18, d * 0.12), Vector3(0, 0, 0), sand.lightened(0.12))
 
 func _p_obelisk(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, rng.randf() * TAU)
-    var h := rng.randf_range(3.0, 5.0)
+    var h := rng.randf_range(3.2, 5.0)
     var c := Color(0.75, 0.65, 0.45)
-    _part("box", Vector3(0, 0.2, 0), Vector3(1.4, 0.4, 1.4), Vector3.ZERO, c.darkened(0.1))
-    _part("box", Vector3(0, h * 0.5, 0), Vector3(0.9, h, 0.9), Vector3.ZERO, c)
-    _part("cone", Vector3(0, h + 0.3, 0), Vector3(1.2, 0.8, 1.2), Vector3.ZERO, c.lightened(0.08))
-    _col_box(Vector3.ZERO, Vector3(1.0, h, 1.0))
+    _pc("box", Vector3(0, 0.15, 0), Vector3(2.2, 0.3, 2.2), c.darkened(0.15))
+    _pc("box", Vector3(0, 0.4, 0), Vector3(1.8, 0.25, 1.8), c.darkened(0.1))
+    _pc("box", Vector3(0, 0.65, 0), Vector3(1.4, 0.25, 1.4), c.darkened(0.05))
+    _pc("box", Vector3(0, 0.65 + h * 0.5, 0), Vector3(0.95, h, 0.95), c)
+    for i in range(4):
+        _pc("box", Vector3(0, 1.3 + h * 0.18 * float(i), 0), Vector3(1.0, 0.1, 1.0), c.darkened(0.2))
+        for sx in [-1.0, 1.0]:
+            _pc("box", Vector3(float(sx) * 0.21, 1.5 + h * 0.18 * float(i), -0.48), Vector3(0.1, 0.22, 0.03), c.darkened(0.35))
+    _pc("wedge", Vector3(0, 0.65 + h + 0.15, 0), Vector3(1.0, 0.7, 1.0), Color(0.9, 0.75, 0.3))
+    _pc("cone", Vector3(0, 0.65 + h + 0.4, 0), Vector3(0.9, 0.7, 0.9), Color(0.9, 0.75, 0.3))
+    _chunk_of_rock(Vector3(1.6, 0.15, 1.0), Vector3(0.5, 0.3, 0.45), c.darkened(0.12), rng)
+    _col_box(Vector3.ZERO, Vector3(2.0, h, 2.0))
 
+# ---------- Сніг і лід ----------
 func _p_snow_mound(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, rng.randf() * TAU)
-    _part("sphere", Vector3(0, 0.0, 0), Vector3(rng.randf_range(2.0, 4.0), rng.randf_range(0.8, 1.4), rng.randf_range(2.0, 3.5)), Vector3.ZERO, Color(0.97, 0.98, 1.0))
+    var w := rng.randf_range(2.0, 4.0)
+    var d := rng.randf_range(2.0, 3.5)
+    var h := rng.randf_range(0.8, 1.4)
+    _pc("sphere", Vector3(0, 0.0, 0), Vector3(w, h, d), Color(0.96, 0.97, 1.0))
+    _pc("sphere", Vector3(w * 0.28, -0.05, d * 0.18), Vector3(w * 0.55, h * 0.75, d * 0.6), Color(0.9, 0.94, 1.0))
+    _pc("sphere", Vector3(-w * 0.3, -0.05, -d * 0.2), Vector3(w * 0.5, h * 0.6, d * 0.5), Color(0.84, 0.9, 0.99))
+    if rng.randf() < 0.4:
+        _pb("cone", Vector3(0.2, h * 0.3, 0.2), Vector3(0.5, h * 0.3 + 0.8, 0.4), 0.05, Color(0.3, 0.2, 0.12))
 
 func _p_ice_crystal(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, rng.randf() * TAU)
-    var c := Color(0.6, 0.85, 1.0)
-    _part("cone", Vector3(0, 0.9, 0), Vector3(0.6, 1.8, 0.6), Vector3.ZERO, c)
-    _part("cone", Vector3(0.5, 0.5, 0.2), Vector3(0.4, 1.0, 0.4), Vector3(0, 0, -20), c.lightened(0.1))
-    _part("cone", Vector3(-0.4, 0.55, -0.2), Vector3(0.4, 1.1, 0.4), Vector3(0, 0, 18), c.darkened(0.05))
-    _col_cyl(Vector3.ZERO, 0.45, 1.5)
+    var c := Color(0.55, 0.84, 1.0)
+    _chunk_of_rock(Vector3(0, 0.15, 0), Vector3(1.4, 0.5, 1.3), Color(0.6, 0.78, 0.9), rng)
+    _part("crystal", Vector3(0, 1.0, 0), Vector3(0.7, 2.0, 0.7), Vector3(0, rng.randf() * 60.0, rng.randf_range(-6, 6)), c)
+    for i in range(rng.randi_range(3, 5)):
+        var a := rng.randf() * TAU
+        var k := rng.randf_range(0.5, 1.0)
+        var lean := rng.randf_range(12.0, 30.0)
+        _part("crystal", Vector3(cos(a) * 0.5, 0.55 * k + 0.1, sin(a) * 0.5), Vector3(0.4, 1.2 * k, 0.4), Vector3(sin(a) * lean, rng.randf() * 60.0, -cos(a) * lean), c.lightened(rng.randf_range(-0.08, 0.14)))
+    _col_cyl(Vector3.ZERO, 0.55, 1.6)
 
+func _p_frozen_statue(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    _m_frozen_statue(rng)
+
+func _m_frozen_statue(rng: RandomNumberGenerator) -> void:
+    var ice := Color(0.62, 0.84, 0.96)
+    var fig := Color(0.35, 0.4, 0.5)
+    _chunk_of_rock(Vector3(0, 0.3, 0), Vector3(1.8, 0.9, 1.6), ice.lightened(0.05), rng)
+    _pc("cyl", Vector3(0, 1.0, 0), Vector3(0.5, 1.1, 0.4), fig)
+    _pc("sphere", Vector3(0, 1.75, 0), Vector3(0.38, 0.4, 0.38), fig.lightened(0.1))
+    _pb("cyl", Vector3(0.22, 1.5, 0), Vector3(0.55, 2.1, -0.1), 0.14, fig)
+    _pb("cyl", Vector3(-0.22, 1.5, 0), Vector3(-0.35, 0.95, 0.0), 0.14, fig)
+    _part("crystal", Vector3(0, 1.4, 0), Vector3(1.4, 2.5, 1.2), Vector3(0, rng.randf() * 60.0, 0), Color(0.7, 0.9, 1.0))
+    for i in range(3):
+        var a := rng.randf() * TAU
+        _part("crystal", Vector3(cos(a) * 0.9, 0.35, sin(a) * 0.9), Vector3(0.35, 0.9, 0.35), Vector3(sin(a) * 20.0, 0.0, -cos(a) * 20.0), ice)
+    _col_cyl(Vector3.ZERO, 0.9, 2.2)
+
+func _p_sled(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    var wood := Color(0.4, 0.27, 0.14)
+    for sz in [-1.0, 1.0]:
+        _pc("box", Vector3(0, 0.16, float(sz) * 0.45), Vector3(2.0, 0.07, 0.1), Color(0.2, 0.2, 0.22))
+        _pb("cyl", Vector3(1.0, 0.16, float(sz) * 0.45), Vector3(1.28, 0.38, float(sz) * 0.45), 0.07, Color(0.2, 0.2, 0.22))
+        for k in range(3):
+            _pc("box", Vector3(-0.7 + 0.7 * float(k), 0.28, float(sz) * 0.45), Vector3(0.08, 0.2, 0.08), wood.darkened(0.1))
+    for k in range(7):
+        _pc("box", Vector3(-0.8 + 0.27 * float(k), 0.4, 0), Vector3(0.22, 0.05, 1.1), wood.lightened(0.04 * float(k % 2)))
+    _pc("box", Vector3(-0.3, 0.65, 0.05), Vector3(0.8, 0.45, 0.6), Color(0.35, 0.3, 0.2))
+    _pc("leaf", Vector3(-0.3, 0.9, 0.05), Vector3(1.0, 0.35, 0.8), Color(0.92, 0.95, 1.0))
+    _pb("cyl", Vector3(1.28, 0.38, 0.45), Vector3(2.6, 0.1, 0.1), 0.03, Color(0.5, 0.4, 0.25))
+    _col_box(Vector3.ZERO, Vector3(2.2, 0.8, 1.2))
+
+func _p_igloo(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
+    _m_igloo(rng)
+
+func _m_igloo(rng: RandomNumberGenerator) -> void:
+    var snow := Color(0.94, 0.96, 1.0)
+    _pc("sphere", Vector3(0, 0.0, 0), Vector3(3.6, 3.8, 3.6), snow)
+    for i in range(3):
+        _pc("torus", Vector3(0, 0.35 + 0.55 * float(i), 0), Vector3(3.3 - 0.9 * float(i), 0.06, 3.3 - 0.9 * float(i)), snow.darkened(0.12))
+    _pc("sphere", Vector3(0, 0.0, -1.7), Vector3(1.5, 1.5, 1.9), snow.darkened(0.03))
+    _pc("box", Vector3(0, 0.45, -2.5), Vector3(0.7, 0.8, 0.1), Color(0.06, 0.07, 0.1))
+    _pc("sphere", Vector3(0, 0.6, -2.35), Vector3(0.9, 0.4, 0.3), snow.darkened(0.08))
+    for i in range(3):
+        var a := rng.randf() * TAU
+        _chunk_of_rock(Vector3(cos(a) * 2.1, 0.1, sin(a) * 2.1 + 0.4), Vector3(0.6, 0.4, 0.5), Color(0.9, 0.94, 1.0), rng)
+    _col_cyl(Vector3(0, 0, 0.2), 1.75, 1.8)
+
+# ---------- Цвинтар ----------
 func _p_tombstone(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
-    var c := _stone(rng)
-    var tilt := rng.randf_range(-8.0, 8.0)
-    _part("box", Vector3(0, 0.55, 0), Vector3(0.7, 1.1, 0.2), Vector3(0, 0, tilt), c)
-    _part("sphere", Vector3(0, 1.1, 0), Vector3(0.7, 0.5, 0.2), Vector3(0, 0, tilt), c)
-    _part("box", Vector3(0, 0.05, 0.6), Vector3(0.6, 0.1, 1.0), Vector3.ZERO, Color(0.2, 0.17, 0.14))
-    _col_box(Vector3.ZERO, Vector3(0.7, 1.2, 0.3))
+    _m_tombstone(rng)
 
-func _p_cross(x: float, z: float, rng: RandomNumberGenerator) -> void:
-    _begin(x, z, rng.randf() * TAU)
+func _m_tombstone(rng: RandomNumberGenerator) -> void:
     var c := _stone(rng)
     var tilt := rng.randf_range(-6.0, 6.0)
-    _part("box", Vector3(0, 0.7, 0), Vector3(0.15, 1.4, 0.15), Vector3(0, 0, tilt), c)
-    _part("box", Vector3(0, 1.05, 0), Vector3(0.8, 0.15, 0.15), Vector3(0, 0, tilt), c)
-    _col_cyl(Vector3.ZERO, 0.25, 1.4)
+    var v := rng.randi_range(0, 3)
+    _pc("sphere", Vector3(0, 0.05, 0.75), Vector3(0.8, 0.28, 1.3), Color(0.2, 0.15, 0.11))
+    _pc("box", Vector3(0, 0.07, 0), Vector3(0.9, 0.14, 0.36), c.darkened(0.12))
+    match v:
+        0:
+            _part("box", Vector3(0, 0.55, 0), Vector3(0.7, 0.9, 0.18), Vector3(0, 0, tilt), c)
+            _part("sphere", Vector3(0, 1.0, 0), Vector3(0.7, 0.5, 0.18), Vector3(0, 0, tilt), c)
+        1:
+            _part("box", Vector3(0, 0.5, 0), Vector3(0.8, 0.75, 0.16), Vector3(0, 0, tilt), c.lightened(0.04))
+            _part("box", Vector3(0, 0.95, 0), Vector3(0.88, 0.1, 0.2), Vector3(0, 0, tilt), c.darkened(0.06))
+        2:
+            _part("box", Vector3(0, 0.75, 0), Vector3(0.45, 1.4, 0.18), Vector3(0, 0, tilt), c)
+            _part("box", Vector3(0, 1.05, 0), Vector3(0.8, 0.14, 0.2), Vector3(0, 0, tilt), c.lightened(0.05))
+        _:
+            _part("box", Vector3(0, 0.35, 0), Vector3(0.7, 0.5, 0.2), Vector3(0, 0, tilt), c)
+            _chunk_of_rock(Vector3(0.7, 0.14, -0.3), Vector3(0.45, 0.28, 0.3), c.darkened(0.08), rng)
+    if rng.randf() < 0.35:
+        _clump(Vector3(rng.randf_range(-0.2, 0.2), 0.1, -0.12), Vector3(0.5, 0.18, 0.2), Color(0.2, 0.34, 0.14), rng)
+    if rng.randf() < 0.25:
+        _pc("sphere", Vector3(0.0, 0.2, -0.3), Vector3(0.14, 0.1, 0.14), Color(0.8, 0.8, 0.85))
+    _col_box(Vector3.ZERO, Vector3(0.8, 1.2, 0.35))
+
+func _p_cross(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
+    _m_cross(rng)
+
+func _m_cross(rng: RandomNumberGenerator) -> void:
+    var tilt := rng.randf_range(-6.0, 6.0)
+    var v := rng.randi_range(0, 2)
+    _pc("sphere", Vector3(0, 0.05, 0.7), Vector3(0.7, 0.25, 1.2), Color(0.2, 0.15, 0.11))
+    if v == 0:
+        var c := _stone(rng)
+        _pc("box", Vector3(0, 0.1, 0), Vector3(0.7, 0.2, 0.7), c.darkened(0.1))
+        _part("box", Vector3(0, 0.2 + 0.6, 0), Vector3(0.17, 1.2, 0.17), Vector3(0, 0, tilt), c)
+        _part("box", Vector3(0, 0.2 + 0.95, 0), Vector3(0.8, 0.17, 0.17), Vector3(0, 0, tilt), c)
+    elif v == 1:
+        var w := Color(0.3, 0.2, 0.11)
+        _part("box", Vector3(0, 0.6, 0), Vector3(0.12, 1.2, 0.1), Vector3(0, 0, tilt), w)
+        _part("box", Vector3(0, 0.95, 0), Vector3(0.7, 0.12, 0.1), Vector3(0, 0, tilt + 4.0), w.lightened(0.05))
+        _pc("box", Vector3(0, 0.1, 0.0), Vector3(0.4, 0.2, 0.3), Color(0.35, 0.33, 0.3))
+    else:
+        var c2 := _stone(rng).lightened(0.05)
+        _pc("box", Vector3(0, 0.15, 0), Vector3(0.6, 0.3, 0.6), c2.darkened(0.1))
+        _part("box", Vector3(0, 0.3 + 0.55, 0), Vector3(0.14, 1.1, 0.14), Vector3(0, 0, tilt), c2)
+        _part("box", Vector3(0, 0.3 + 0.8, 0), Vector3(0.6, 0.14, 0.14), Vector3(0, 0, tilt), c2)
+        _part("torus", Vector3(0, 0.3 + 0.8, 0), Vector3(0.5, 0.1, 0.5), Vector3(90, 0, tilt), c2.lightened(0.05))
+    _col_cyl(Vector3.ZERO, 0.28, 1.4)
+
+func _p_angel_statue(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
+    _m_angel(rng)
+
+func _m_angel(rng: RandomNumberGenerator) -> void:
+    var c := Color(0.7, 0.72, 0.74).darkened(rng.randf_range(0.0, 0.15))
+    _pc("box", Vector3(0, 0.2, 0), Vector3(1.4, 0.4, 1.4), c.darkened(0.15))
+    _pc("box", Vector3(0, 0.8, 0), Vector3(1.0, 0.8, 1.0), c.darkened(0.08))
+    _pc("box", Vector3(0, 1.28, 0), Vector3(1.2, 0.16, 1.2), c.darkened(0.12))
+    _pc("cone", Vector3(0, 2.0, 0), Vector3(0.85, 1.4, 0.85), c)
+    _pc("sphere", Vector3(0, 2.85, 0), Vector3(0.38, 0.42, 0.38), c.lightened(0.05))
+    _pb("cyl", Vector3(0.2, 2.5, 0), Vector3(0.12, 2.0, -0.35), 0.14, c)
+    _pb("cyl", Vector3(-0.2, 2.5, 0), Vector3(-0.12, 2.0, -0.35), 0.14, c)
+    for sx in [-1.0, 1.0]:
+        _part("box", Vector3(float(sx) * 0.55, 2.55, 0.28), Vector3(0.07, 1.5, 0.5), Vector3(0, float(sx) * 25.0, float(sx) * -22.0), c.lightened(0.08))
+        _part("box", Vector3(float(sx) * 0.85, 2.0, 0.42), Vector3(0.06, 0.8, 0.4), Vector3(0, float(sx) * 25.0, float(sx) * -30.0), c)
+    if rng.randf() < 0.5:
+        _clump(Vector3(0.3, 0.5, -0.5), Vector3(0.5, 0.35, 0.3), Color(0.2, 0.36, 0.14), rng)
+    _col_cyl(Vector3.ZERO, 0.75, 3.0)
 
 func _p_crypt(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
-    var c := Color(0.32, 0.31, 0.34)
-    _part("box", Vector3(0, 1.1, 0), Vector3(3.0, 2.2, 3.4), Vector3.ZERO, c)
-    _part("box", Vector3(0, 2.35, 0), Vector3(3.4, 0.3, 3.8), Vector3.ZERO, c.darkened(0.1))
-    _part("box", Vector3(0, 0.8, -1.72), Vector3(0.9, 1.6, 0.1), Vector3.ZERO, Color(0.05, 0.04, 0.05))
-    _col_box(Vector3.ZERO, Vector3(3.2, 2.5, 3.6))
+    var c := Color(0.34, 0.33, 0.36)
+    _pc("box", Vector3(0, 0.15, 0), Vector3(3.8, 0.3, 4.2), c.darkened(0.15))
+    _pc("box", Vector3(0, 1.3, 0), Vector3(3.0, 2.2, 3.4), c)
+    _pc("box", Vector3(0, 2.5, 0), Vector3(3.4, 0.3, 3.8), c.darkened(0.1))
+    _pc("wedge", Vector3(0, 3.0, 0), Vector3(3.4, 0.9, 3.8), c.darkened(0.05))
+    _pc("box", Vector3(0, 3.5, -1.95), Vector3(0.08, 0.08, 0.08), c)
+    _pc("box", Vector3(0, 3.7, 0), Vector3(0.16, 0.9, 0.16), c.lightened(0.05))
+    _pc("box", Vector3(0, 3.8, 0), Vector3(0.6, 0.14, 0.16), c.lightened(0.05))
+    for sx in [-1.0, 1.0]:
+        _pc("cyl", Vector3(float(sx) * 1.0, 1.35, -1.95), Vector3(0.4, 2.2, 0.4), c.lightened(0.06))
+        _pc("box", Vector3(float(sx) * 1.0, 0.45, -1.95), Vector3(0.55, 0.2, 0.55), c.darkened(0.08))
+        _pc("box", Vector3(float(sx) * 1.0, 2.45, -1.95), Vector3(0.55, 0.2, 0.55), c.darkened(0.08))
+    _pc("box", Vector3(0, 0.95, -1.74), Vector3(1.2, 1.7, 0.12), c.darkened(0.2))
+    _pc("box", Vector3(0, 0.85, -1.8), Vector3(0.9, 1.5, 0.08), Color(0.05, 0.04, 0.05))
+    for k in range(4):
+        _pc("box", Vector3(-0.3 + 0.2 * float(k), 0.85, -1.84), Vector3(0.04, 1.4, 0.03), Color(0.14, 0.14, 0.16))
+    _pc("box", Vector3(0, 0.1, -2.3), Vector3(2.2, 0.2, 0.7), c.darkened(0.2))
+    for i in range(3):
+        _clump(Vector3(rng.randf_range(-1.4, 1.4), rng.randf_range(0.5, 2.0), 1.72), Vector3(0.7, 0.6, 0.2), Color(0.18, 0.3, 0.14), rng)
+    _col_box(Vector3.ZERO, Vector3(3.8, 2.8, 4.0))
+
+func _p_mausoleum(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
+    var c := Color(0.52, 0.5, 0.5)
+    _pc("box", Vector3(0, 0.15, 0), Vector3(5.6, 0.3, 5.4), c.darkened(0.2))
+    _pc("box", Vector3(0, 0.45, 0), Vector3(5.0, 0.3, 5.0), c.darkened(0.12))
+    _pc("box", Vector3(0, 1.9, 0.3), Vector3(4.0, 2.6, 4.2), c)
+    _pc("box", Vector3(0, 3.3, 0.3), Vector3(4.4, 0.3, 4.6), c.darkened(0.1))
+    _pc("wedge", Vector3(0, 3.9, 0.3), Vector3(4.4, 1.0, 4.6), c.darkened(0.06))
+    _pc("wedge", Vector3(0, 3.8, -2.1), Vector3(0.1, 1.0, 4.4), c.lightened(0.04))
+    for sx in [-1.5, -0.5, 0.5, 1.5]:
+        _pc("cyl", Vector3(float(sx), 1.85, -2.05), Vector3(0.45, 2.7, 0.45), c.lightened(0.1))
+        _pc("box", Vector3(float(sx), 0.65, -2.05), Vector3(0.6, 0.2, 0.6), c.darkened(0.05))
+        _pc("box", Vector3(float(sx), 3.25, -2.05), Vector3(0.6, 0.2, 0.6), c.darkened(0.05))
+    _pc("box", Vector3(0, 1.4, -1.8), Vector3(1.0, 2.0, 0.1), Color(0.05, 0.04, 0.05))
+    _pc("box", Vector3(0, 4.55, -0.2), Vector3(0.2, 1.0, 0.2), c.lightened(0.1))
+    _pc("box", Vector3(0, 4.7, -0.2), Vector3(0.7, 0.16, 0.2), c.lightened(0.1))
+    _pc("box", Vector3(0, 0.1, -3.2), Vector3(3.6, 0.2, 1.0), c.darkened(0.2))
+    for sx in [-1.0, 1.0]:
+        _pc("cone", Vector3(float(sx) * 2.3, 0.7, -2.2), Vector3(0.7, 1.4, 0.7), Color(0.12, 0.2, 0.1))
+    _col_box(Vector3(0, 0, 0.2), Vector3(5.0, 3.5, 4.8))
 
 func _p_iron_fence(x: float, z: float, rng: RandomNumberGenerator) -> void:
-    _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
-    var c := Color(0.12, 0.12, 0.14)
-    for i in range(5):
-        _part("cyl", Vector3(-1.6 + 0.8 * float(i), 0.65, 0), Vector3(0.07, 1.3, 0.07), Vector3.ZERO, c)
-        _part("cone", Vector3(-1.6 + 0.8 * float(i), 1.4, 0), Vector3(0.14, 0.3, 0.14), Vector3.ZERO, c)
-    _part("box", Vector3(0, 0.3, 0), Vector3(3.3, 0.06, 0.06), Vector3.ZERO, c)
-    _part("box", Vector3(0, 1.0, 0), Vector3(3.3, 0.06, 0.06), Vector3.ZERO, c)
-    _col_box(Vector3.ZERO, Vector3(3.3, 1.3, 0.2))
+    _begin(x, z, rng.randf() * TAU)
+    _iron_run(-1.65, 0.0, 1.65, 0.0, rng)
 
+func _p_open_grave(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
+    _m_open_grave(rng)
+
+func _m_open_grave(rng: RandomNumberGenerator) -> void:
+    var dirt := Color(0.24, 0.17, 0.11)
+    _pc("box", Vector3(0, 0.022, 0), Vector3(1.0, 0.04, 2.1), Color(0.03, 0.02, 0.02))
+    _pc("box", Vector3(0, 0.05, -1.1), Vector3(1.2, 0.1, 0.18), dirt.darkened(0.1))
+    _pc("box", Vector3(0, 0.05, 1.1), Vector3(1.2, 0.1, 0.18), dirt.darkened(0.1))
+    for sx in [-1.0, 1.0]:
+        _pc("box", Vector3(float(sx) * 0.58, 0.05, 0), Vector3(0.18, 0.1, 2.3), dirt.darkened(0.1))
+    _pc("sphere", Vector3(1.5, 0.0, 0.2), Vector3(1.6, 0.9, 2.0), dirt)
+    _pc("sphere", Vector3(1.7, -0.05, -0.5), Vector3(0.9, 0.6, 0.9), dirt.lightened(0.05))
+    _pb("cyl", Vector3(1.0, 0.7, -0.8), Vector3(1.35, 0.15, -0.5), 0.05, Color(0.4, 0.28, 0.14))
+    _pc("box", Vector3(1.38, 0.1, -0.46), Vector3(0.22, 0.04, 0.26), Color(0.35, 0.35, 0.38))
+    _pc("box", Vector3(0, 0.45, 1.5), Vector3(0.6, 0.9, 0.16), _stone(rng))
+    _pb("cyl", Vector3(-0.2, 0.08, -0.3), Vector3(0.3, 0.06, 0.6), 0.06, Color(0.4, 0.3, 0.16))
+
+func _p_coffin(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    var w := Color(0.28, 0.17, 0.1)
+    _part("box", Vector3(0, 0.3, 0), Vector3(0.8, 0.5, 2.0), Vector3(0, 0, 0), w)
+    _pc("wedge", Vector3(0, 0.62, 0), Vector3(2.0, 0.28, 0.82), w.lightened(0.05))
+    _part("wedge", Vector3(0, 0.62, 0), Vector3(2.0, 0.28, 0.82), Vector3(0, 90, 0), w.lightened(0.05))
+    _pc("box", Vector3(0, 0.78, -0.3), Vector3(0.1, 0.03, 0.5), Color(0.7, 0.6, 0.3))
+    _pc("box", Vector3(0, 0.78, -0.4), Vector3(0.35, 0.03, 0.1), Color(0.7, 0.6, 0.3))
+    for i in range(rng.randi_range(1, 2)):
+        _pc("sphere", Vector3(rng.randf_range(-0.4, 0.4), 0.05, 1.3 + 0.0), Vector3(0.5, 0.18, 0.5), Color(0.2, 0.15, 0.11))
+    _col_box(Vector3.ZERO, Vector3(0.9, 0.9, 2.1))
+
+func _p_lantern_post(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    var iron := Color(0.1, 0.1, 0.12)
+    _pc("cyl", Vector3(0, 0.15, 0), Vector3(0.4, 0.3, 0.4), iron.lightened(0.05))
+    _pc("cyl", Vector3(0, 1.1, 0), Vector3(0.1, 2.2, 0.1), iron)
+    _pb("cyl", Vector3(0, 2.0, 0), Vector3(0.45, 2.15, 0), 0.06, iron)
+    _pc("box", Vector3(0.45, 1.9, 0), Vector3(0.28, 0.34, 0.28), Color(1.0, 0.8, 0.4))
+    _pc("cone", Vector3(0.45, 2.17, 0), Vector3(0.4, 0.2, 0.4), iron)
+    _pc("cone", Vector3(0.45, 1.68, 0), Vector3(0.3, 0.12, 0.3), iron)
+    _col_cyl(Vector3.ZERO, 0.2, 2.3)
+    _light_local(1.9, 1.3, 8.0, Color(1.0, 0.75, 0.4))
+
+# Огороджена ділянка цвинтаря: решітка з брамою спереду (-Z), ряди надгробків лицем до брами, статуя ззаду, дерево збоку.
+func _p_grave_plot(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
+    var hw := 5.0
+    var hd := 5.4
+    _iron_run(-hw, -hd, -1.5, -hd, rng)
+    _iron_run(1.5, -hd, hw, -hd, rng)
+    _iron_run(-hw, hd, hw, hd, rng)
+    _iron_run(-hw, -hd, -hw, hd, rng)
+    _iron_run(hw, -hd, hw, hd, rng)
+    _pc("box", Vector3(0, 0.02, -hd + 0.2), Vector3(3.0, 0.04, 1.2), Color(0.3, 0.28, 0.27))
+    _sub(0.0, -hd - 0.2, 0.0)
+    _pc("box", Vector3(0, 0.02, 0), Vector3(1.6, 0.04, 1.6), Color(0.3, 0.28, 0.27))
+    _sub_end()
+    for row in range(2):
+        for k in range(3):
+            var tx := -3.0 + 3.0 * float(k) + rng.randf_range(-0.2, 0.2)
+            var tz := -2.2 + 3.2 * float(row)
+            _sub(tx, tz, rng.randf_range(-0.05, 0.05))
+            if rng.randf() < 0.15:
+                _m_open_grave(rng)
+            elif rng.randf() < 0.25:
+                _m_cross(rng)
+            else:
+                _m_tombstone(rng)
+            _sub_end()
+    _sub(0.0, hd - 1.1, 0.0)
+    _m_angel(rng)
+    _sub_end()
+
+# ---------- Руїни ----------
 func _p_ruin_wall(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
     var length := rng.randf_range(3.2, 8.0)
-    _wall_line(-length * 0.5, 0.0, length * 0.5, 0.0, rng, 0.8, 3.0, _stone(rng))
+    var c := _stone(rng)
+    _wall_line(-length * 0.5, 0.0, length * 0.5, 0.0, rng, 0.8, 3.0, c)
+    for i in range(rng.randi_range(2, 4)):
+        _chunk_of_rock(Vector3(rng.randf_range(-length * 0.5, length * 0.5), 0.2, rng.randf_range(0.5, 0.9) * (1.0 if rng.randf() < 0.5 else -1.0)), Vector3(0.5, 0.35, 0.5), c.darkened(0.08), rng)
+    for i in range(rng.randi_range(1, 3)):
+        _clump(Vector3(rng.randf_range(-length * 0.45, length * 0.45), rng.randf_range(0.5, 1.6), 0.28), Vector3(0.7, 0.5, 0.24), Color(0.2, 0.36, 0.14), rng)
 
 func _p_pillar(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, rng.randf() * TAU)
-    var h := rng.randf_range(2.0, 4.0)
+    var h := rng.randf_range(2.2, 4.0)
     var c := _stone(rng).lightened(0.1)
-    _part("box", Vector3(0, 0.15, 0), Vector3(1.1, 0.3, 1.1), Vector3.ZERO, c.darkened(0.1))
-    _part("cyl", Vector3(0, 0.3 + h * 0.5, 0), Vector3(0.7, h, 0.7), Vector3.ZERO, c)
-    _part("cyl", Vector3(1.4, 0.35, 0.4), Vector3(0.7, 1.0, 0.7), Vector3(0, 0, 90), c.darkened(0.05))
-    _part("box", Vector3(0.6, 0.12, -0.7), Vector3(0.4, 0.25, 0.3), Vector3(0, 30, 0), c.darkened(0.12))
+    _pc("box", Vector3(0, 0.15, 0), Vector3(1.2, 0.3, 1.2), c.darkened(0.1))
+    _pc("cyl", Vector3(0, 0.38, 0), Vector3(0.95, 0.16, 0.95), c.darkened(0.04))
+    _pc("cyl", Vector3(0, 0.3 + h * 0.5, 0), Vector3(0.7, h, 0.7), c)
+    for i in range(3):
+        _pc("torus", Vector3(0, 0.9 + (h - 0.9) * float(i) / 2.0, 0), Vector3(0.78, 0.07, 0.78), c.darkened(0.1))
+    if rng.randf() < 0.65:
+        _pc("cyl", Vector3(0, 0.3 + h + 0.08, 0), Vector3(0.95, 0.18, 0.95), c.darkened(0.04))
+        _pc("box", Vector3(0, 0.3 + h + 0.25, 0), Vector3(1.1, 0.16, 1.1), c.darkened(0.08))
+    else:
+        _chunk_of_rock(Vector3(0, 0.3 + h, 0), Vector3(0.9, 0.35, 0.8), c.darkened(0.05), rng)
+        _pb("cyl", Vector3(1.4, 0.35, 0.5), Vector3(2.4, 0.35, 0.1), 0.7, c.darkened(0.05))
+    _chunk_of_rock(Vector3(0.7, 0.12, -0.8), Vector3(0.5, 0.25, 0.4), c.darkened(0.12), rng)
     _col_cyl(Vector3.ZERO, 0.5, 2.5)
 
 func _p_rubble(x: float, z: float, rng: RandomNumberGenerator) -> void:
-    _begin(x, z, 0.0)
+    _begin(x, z, rng.randf() * TAU)
+    var c := _stone(rng)
+    for i in range(rng.randi_range(2, 3)):
+        var s := rng.randf_range(0.4, 0.8)
+        _chunk_of_rock(Vector3(rng.randf_range(-0.9, 0.9), s * 0.2, rng.randf_range(-0.9, 0.9)), Vector3(s, s * 0.7, s * 0.9), _jit(c, 0.05, rng), rng)
     for i in range(rng.randi_range(4, 7)):
         var s := rng.randf_range(0.2, 0.5)
-        _part("box", Vector3(rng.randf_range(-1.2, 1.2), s * 0.4, rng.randf_range(-1.2, 1.2)), Vector3(s, s * 0.7, s * 1.2), Vector3(0, rng.randf() * 180.0, rng.randf_range(-20, 20)), _stone(rng))
+        _part("box", Vector3(rng.randf_range(-1.3, 1.3), s * 0.35, rng.randf_range(-1.3, 1.3)), Vector3(s, s * 0.6, s * 1.3), Vector3(rng.randf_range(-8, 8), rng.randf() * 180.0, rng.randf_range(-20, 20)), _jit(Color(0.45, 0.28, 0.2) if rng.randf() < 0.3 else c, 0.05, rng))
+    if rng.randf() < 0.4:
+        _pb("cyl", Vector3(-0.3, 0.05, 0.2), Vector3(0.9, 0.7, 0.5), 0.04, Color(0.3, 0.15, 0.1))
 
-func _p_broken_house(x: float, z: float, rng: RandomNumberGenerator) -> void:
+func _p_fallen_column(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * PI)
+    var c := _stone(rng).lightened(0.1)
+    _pb("cyl", Vector3(-1.9, 0.38, 0), Vector3(0.5, 0.38, 0.1), 0.76, c)
+    _pb("cyl", Vector3(0.75, 0.36, 0.2), Vector3(1.9, 0.36, 0.45), 0.7, c.darkened(0.05))
+    _pb("cyl", Vector3(-1.92, 0.38, 0), Vector3(-1.99, 0.38, 0), 0.9, c.darkened(0.08))
+    _pc("box", Vector3(-2.4, 0.15, 0.1), Vector3(1.1, 0.3, 1.1), c.darkened(0.1))
+    _chunk_of_rock(Vector3(2.3, 0.15, -0.4), Vector3(0.5, 0.3, 0.4), c.darkened(0.1), rng)
+    _col_box(Vector3(-0.4, 0, 0.05), Vector3(4.2, 0.8, 0.9))
+
+func _p_statue(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
+    _m_statue(rng)
+
+func _m_statue(rng: RandomNumberGenerator) -> void:
+    var c := _stone(rng).lightened(0.08)
+    _pc("box", Vector3(0, 0.15, 0), Vector3(1.9, 0.3, 1.9), c.darkened(0.12))
+    _pc("box", Vector3(0, 0.5, 0), Vector3(1.5, 0.4, 1.5), c.darkened(0.06))
+    _pc("box", Vector3(0, 1.1, 0), Vector3(1.0, 0.9, 1.0), c)
+    _pc("box", Vector3(0, 1.62, 0), Vector3(1.2, 0.14, 1.2), c.darkened(0.08))
+    # лицар: ноги, тулуб, голова зі шоломом, меч і щит
+    _pc("cyl", Vector3(-0.17, 2.05, 0), Vector3(0.28, 0.9, 0.28), c)
+    _pc("cyl", Vector3(0.17, 2.05, 0), Vector3(0.28, 0.9, 0.28), c)
+    _pc("box", Vector3(0, 2.8, 0), Vector3(0.7, 0.9, 0.4), c.lightened(0.04))
+    _pc("sphere", Vector3(0, 3.45, 0), Vector3(0.4, 0.44, 0.4), c.lightened(0.06))
+    _pc("cone", Vector3(0, 3.78, 0), Vector3(0.3, 0.3, 0.3), c.darkened(0.04))
+    _pb("cyl", Vector3(0.45, 3.0, -0.1), Vector3(0.45, 1.8, -0.25), 0.1, c)
+    _pb("cyl", Vector3(0.45, 1.7, -0.25), Vector3(0.45, 3.9, -0.3), 0.07, c.darkened(0.1))
+    _pc("box", Vector3(-0.5, 2.8, -0.25), Vector3(0.12, 0.8, 0.5), c.darkened(0.06))
+    if rng.randf() < 0.5:
+        _clump(Vector3(0.3, 0.35, -0.5), Vector3(0.6, 0.4, 0.4), Color(0.2, 0.36, 0.14), rng)
+    _col_cyl(Vector3.ZERO, 0.85, 3.8)
+
+func _p_broken_stairs(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
     var c := _stone(rng).lightened(0.05)
-    _part("box", Vector3(0, 0.05, 0), Vector3(7.0, 0.1, 6.0), Vector3.ZERO, Color(0.28, 0.25, 0.22))
-    _wall_line(-3.5, -3.0, 3.5, -3.0, rng, 1.2, 2.8, c, 1, 2)  # фасад із широким проходом (3.5 м)
-    _wall_line(-3.5, 3.0, 3.5, 3.0, rng, 0.8, 2.6, c, 2, 2)    # задня стіна з проломом: будинок наскрізний
-    _wall_line(-3.5, -3.0, -3.5, 3.0, rng, 0.8, 2.4, c)
-    _wall_line(3.5, -3.0, 3.5, 3.0, rng, 0.6, 2.2, c, 1, 2)    # бічний пролом
-    var wood := Color(0.35, 0.22, 0.12)
-    _part("box", Vector3(-1.0, 2.0, 0.5), Vector3(0.18, 0.18, 5.0), Vector3(0, 20, 12), wood)
-    _part("box", Vector3(1.2, 1.4, -0.4), Vector3(0.18, 0.18, 4.0), Vector3(0, -30, -18), wood)
-    for i in range(6):
-        var s := rng.randf_range(0.2, 0.45)
-        _part("box", Vector3(rng.randf_range(-2.8, 2.8), s * 0.4, rng.randf_range(-2.4, 2.4)), Vector3(s, s * 0.7, s), Vector3(0, rng.randf() * 180.0, 0), _stone(rng))
+    for i in range(4):
+        var w := 3.4 - (0.3 if i == 3 else 0.0)
+        var hh := 0.28 * float(i + 1)
+        var zz := -0.9 + 0.8 * float(i)
+        _pc("box", Vector3(0, hh * 0.5, zz), Vector3(w, hh, 0.8), c.darkened(0.04 * float(i)))
+    _pc("box", Vector3(1.7, 0.4, 0.2), Vector3(0.3, 0.8, 2.6), c.darkened(0.1))
+    _chunk_of_rock(Vector3(-1.2, 0.15, -1.5), Vector3(0.6, 0.3, 0.5), c.darkened(0.1), rng)
+    _chunk_of_rock(Vector3(0.6, 0.12, -1.7), Vector3(0.4, 0.24, 0.4), c.darkened(0.12), rng)
+    _col_box(Vector3(0, 0, -0.1), Vector3(3.6, 1.1, 3.0))
 
 func _p_arch(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
     var c := _stone(rng).lightened(0.08)
-    _part("box", Vector3(-1.6, 1.8, 0), Vector3(0.8, 3.6, 0.8), Vector3.ZERO, c)
-    _part("box", Vector3(1.6, 1.8, 0), Vector3(0.8, 3.6, 0.8), Vector3.ZERO, c)
-    _part("box", Vector3(0, 3.95, 0), Vector3(4.2, 0.7, 0.9), Vector3.ZERO, c.darkened(0.05))
-    _col_box(Vector3(-1.6, 0, 0), Vector3(0.9, 3.6, 0.9))
-    _col_box(Vector3(1.6, 0, 0), Vector3(0.9, 3.6, 0.9))
+    for sx in [-1.0, 1.0]:
+        var px := float(sx) * 1.6
+        _pc("box", Vector3(px, 0.2, 0), Vector3(1.2, 0.4, 1.2), c.darkened(0.12))
+        _pc("box", Vector3(px, 1.9, 0), Vector3(0.8, 3.4, 0.8), c)
+        _pc("box", Vector3(px, 3.65, 0), Vector3(1.0, 0.22, 1.0), c.darkened(0.06))
+    _pc("box", Vector3(0, 4.1, 0), Vector3(4.4, 0.7, 0.9), c.darkened(0.05))
+    _pc("box", Vector3(0, 4.55, 0), Vector3(1.0, 0.3, 1.0), c.lightened(0.04))
+    _pc("box", Vector3(1.2, 3.65, 0), Vector3(0.7, 0.45, 0.8), c.darkened(0.04))
+    for i in range(3):
+        _clump(Vector3(rng.randf_range(-2.0, 2.0), rng.randf_range(0.8, 3.4), 0.46), Vector3(0.5, 0.6, 0.2), Color(0.2, 0.36, 0.14), rng)
+    _chunk_of_rock(Vector3(0.6, 0.15, 0.2), Vector3(0.5, 0.3, 0.4), c.darkened(0.1), rng)
+    _col_box(Vector3(-1.6, 0, 0), Vector3(1.0, 3.8, 1.0))
+    _col_box(Vector3(1.6, 0, 0), Vector3(1.0, 3.8, 1.0))
 
-# ---------- Кров, трупи, місто ----------
+func _p_broken_house(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
+    var c := _stone(rng).lightened(0.05)
+    var wood := Color(0.33, 0.21, 0.11)
+    _pc("box", Vector3(0, 0.05, 0), Vector3(7.0, 0.1, 6.0), Color(0.28, 0.25, 0.22))
+    _wall_line(-3.5, -3.0, 3.5, -3.0, rng, 1.2, 2.8, c, 1, 2)
+    _wall_line(-3.5, 3.0, 3.5, 3.0, rng, 0.8, 2.6, c, 2, 2)
+    _wall_line(-3.5, -3.0, -3.5, 3.0, rng, 0.8, 2.4, c)
+    _wall_line(3.5, -3.0, 3.5, 3.0, rng, 0.6, 2.2, c, 1, 2)
+    # залишки даху: крокви й уламок покрівлі
+    _pb("box", Vector3(-3.4, 2.4, -2.8), Vector3(0.0, 3.4, 0.2), 0.18, wood)
+    _pb("box", Vector3(-3.4, 2.3, 0.4), Vector3(-0.4, 3.2, 0.3), 0.16, wood)
+    _pb("box", Vector3(-3.3, 2.2, 2.9), Vector3(1.4, 2.9, 1.0), 0.16, wood)
+    _part("wedge", Vector3(-2.0, 2.7, 1.6), Vector3(3.2, 0.9, 2.4), Vector3(0, 8, 0), Color(0.5, 0.22, 0.15))
+    _pc("box", Vector3(2.6, 2.1, -2.4), Vector3(0.7, 3.2, 0.7), c.darkened(0.1))      # комин
+    _pc("box", Vector3(1.4, 0.9, 1.7), Vector3(0.6, 0.9, 0.5), Color(0.25, 0.14, 0.1))   # шафа
+    for i in range(7):
+        var s := rng.randf_range(0.2, 0.45)
+        _chunk_of_rock(Vector3(rng.randf_range(-2.8, 2.8), s * 0.25, rng.randf_range(-2.4, 2.4)), Vector3(s, s * 0.7, s), _stone(rng), rng)
+    _pb("box", Vector3(-1.0, 0.1, -1.0), Vector3(0.4, 0.5, 0.2), 0.16, wood)
+# ---------- Кров, трупи ----------
 func _p_blood(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, rng.randf() * TAU)
+    _m_blood(rng)
+
+func _m_blood(rng: RandomNumberGenerator) -> void:
     var c := Color(rng.randf_range(0.2, 0.32), 0.015, 0.015)
-    var s := rng.randf_range(0.8, 2.2)
-    _part("sphere", Vector3(0, 0.02, 0), Vector3(s * 1.4, 0.03, s), Vector3.ZERO, c)
-    for i in range(rng.randi_range(2, 4)):
-        var r := rng.randf_range(0.2, 0.6)
-        _part("sphere", Vector3(rng.randf_range(-s, s), 0.022, rng.randf_range(-s, s) * 0.8), Vector3(r, 0.03, r * 0.8), Vector3.ZERO, c.darkened(0.1))
+    var s := rng.randf_range(0.8, 2.0)
+    _pc("sphere", Vector3(0, 0.02, 0), Vector3(s * 1.4, 0.03, s), c)
+    _pc("sphere", Vector3(s * 0.15, 0.026, 0), Vector3(s * 0.8, 0.03, s * 0.6), c.darkened(0.25))
+    for i in range(rng.randi_range(3, 6)):
+        var r := rng.randf_range(0.1, 0.5)
+        var a := rng.randf() * TAU
+        var d := rng.randf_range(0.6, 1.5) * s
+        _pc("sphere", Vector3(cos(a) * d, 0.022, sin(a) * d * 0.8), Vector3(r, 0.03, r * 0.8), c.darkened(0.1))
+    if rng.randf() < 0.5:
+        _pc("box", Vector3(s * 1.3, 0.021, 0), Vector3(s * 1.2, 0.025, 0.14), c.darkened(0.05))
 
 func _p_corpse(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, rng.randf() * TAU)
+    _m_corpse(rng)
+
+func _m_corpse(rng: RandomNumberGenerator) -> void:
     var skin := _jit(Color(0.55, 0.5, 0.42), 0.05, rng)
     var cloth := Color.from_hsv(rng.randf(), 0.3, 0.32)
-    _part("sphere", Vector3(0, 0.02, 0), Vector3(2.2, 0.03, 1.6), Vector3.ZERO, Color(0.24, 0.015, 0.015))
-    _part("box", Vector3(0, 0.14, 0), Vector3(0.55, 0.26, 0.9), Vector3(0, 0, 0), cloth)
-    _part("sphere", Vector3(0, 0.15, -0.62), Vector3(0.32, 0.3, 0.34), Vector3.ZERO, skin)
-    _part("box", Vector3(-0.15, 0.08, 0.85), Vector3(0.18, 0.16, 0.85), Vector3(0, rng.randf_range(-12, 12), 0), cloth.darkened(0.25))
-    _part("box", Vector3(0.17, 0.08, 0.8), Vector3(0.18, 0.16, 0.85), Vector3(0, rng.randf_range(-12, 12), 0), cloth.darkened(0.25))
-    _part("box", Vector3(-0.42, 0.1, -0.2), Vector3(0.14, 0.14, 0.7), Vector3(0, rng.randf_range(-35, 35), 0), skin.darkened(0.15))
-    _part("box", Vector3(0.42, 0.1, -0.1), Vector3(0.14, 0.14, 0.7), Vector3(0, rng.randf_range(-35, 35), 0), skin.darkened(0.15))
-    _part("sphere", Vector3(0.1, 0.27, -0.1), Vector3(0.3, 0.06, 0.3), Vector3.ZERO, Color(0.3, 0.02, 0.02))
+    _pc("sphere", Vector3(0, 0.02, 0), Vector3(2.4, 0.03, 1.7), Color(0.24, 0.015, 0.015))
+    _pc("box", Vector3(0, 0.14, 0), Vector3(0.55, 0.26, 0.9), cloth)
+    _pc("box", Vector3(0, 0.11, 0.38), Vector3(0.58, 0.14, 0.08), Color(0.12, 0.09, 0.06))
+    _pc("sphere", Vector3(0, 0.15, -0.62), Vector3(0.32, 0.3, 0.34), skin)
+    _pc("sphere", Vector3(0, 0.2, -0.7), Vector3(0.34, 0.2, 0.2), Color(0.18, 0.12, 0.08))
+    for sx in [-1.0, 1.0]:
+        _part("box", Vector3(float(sx) * 0.16, 0.08, 0.85), Vector3(0.18, 0.16, 0.85), Vector3(0, rng.randf_range(-12, 12), 0), cloth.darkened(0.25))
+        _part("box", Vector3(float(sx) * 0.17, 0.07, 1.34), Vector3(0.2, 0.12, 0.25), Vector3(0, rng.randf_range(-20, 20), 0), Color(0.1, 0.08, 0.06))
+        _part("box", Vector3(float(sx) * 0.42, 0.1, -0.2), Vector3(0.14, 0.14, 0.7), Vector3(0, float(sx) * rng.randf_range(10, 40), 0), skin.darkened(0.15))
+        _pc("sphere", Vector3(float(sx) * 0.5, 0.09, -0.52), Vector3(0.13, 0.1, 0.13), skin.darkened(0.1))
+    _pc("sphere", Vector3(0.1, 0.27, -0.1), Vector3(0.3, 0.06, 0.3), Color(0.3, 0.02, 0.02))
 
+# ---------- Місто ----------
 func _p_car(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, rng.randf() * TAU)
-    var paint := Color.from_hsv(rng.randf(), 0.4, 0.34)
-    if rng.randf() < 0.35:
-        paint = Color(0.07, 0.065, 0.065)
-    var glass := Color(0.05, 0.07, 0.09)
-    _part("box", Vector3(0, 0.62, 0), Vector3(4.2, 0.7, 1.8), Vector3.ZERO, paint)
-    _part("box", Vector3(-0.2, 1.17, 0), Vector3(2.2, 0.55, 1.6), Vector3.ZERO, glass)
-    _part("box", Vector3(-0.2, 1.48, 0), Vector3(2.0, 0.08, 1.55), Vector3.ZERO, paint.darkened(0.1))
-    for sx in [-1.3, 1.3]:
-        for sz in [-0.9, 0.9]:
-            _part("cyl", Vector3(float(sx), 0.32, float(sz)), Vector3(0.64, 0.3, 0.64), Vector3(90, 0, 0), Color(0.04, 0.04, 0.04))
-    _part("box", Vector3(0.3, 0.7, 0.92), Vector3(1.6, 0.35, 0.04), Vector3.ZERO, Color(0.35, 0.18, 0.1))
-    _part("box", Vector3(1.4, 1.0, 0.0), Vector3(0.5, 0.06, 1.6), Vector3(0, 0, rng.randf_range(10, 35)), paint.darkened(0.15))
-    _part("sphere", Vector3(-0.3, 1.18, -0.86), Vector3(0.5, 0.4, 0.06), Vector3.ZERO, Color(0.25, 0.02, 0.02))
-    _col_box(Vector3.ZERO, Vector3(4.2, 1.5, 1.8))
+    _m_car(rng, 0)
+
+# variant: 0 — легковик, 1 — поліцейський, 2 — фургон. Довга вісь — X, капот у +X.
+func _m_car(rng: RandomNumberGenerator, variant: int) -> void:
+    var paint := Color.from_hsv(rng.randf(), 0.45, 0.4)
+    if rng.randf() < 0.3:
+        paint = Color(0.12, 0.115, 0.115)
+    if variant == 1:
+        paint = Color(0.08, 0.1, 0.16)
+    var glass := Color(0.07, 0.1, 0.13)
+    var dark := Color(0.05, 0.05, 0.05)
+    var clen := 4.2 if variant != 2 else 4.8
+    _pc("box", Vector3(0, 0.62, 0), Vector3(clen, 0.62, 1.82), paint)
+    _pc("box", Vector3(0, 0.3, 0), Vector3(clen - 0.4, 0.3, 1.7), dark)
+    if variant == 2:
+        _pc("box", Vector3(-0.5, 1.4, 0), Vector3(3.2, 1.0, 1.74), paint.lightened(0.05))
+        _pc("box", Vector3(1.6, 1.1, 0), Vector3(1.0, 0.5, 1.6), glass)
+        _pc("box", Vector3(1.0, 1.55, 0), Vector3(0.12, 0.7, 1.6), paint.darkened(0.2))
+    else:
+        _pc("box", Vector3(-0.15, 1.22, 0), Vector3(2.3, 0.55, 1.66), paint.darkened(0.05))
+        for sz in [-1.0, 1.0]:
+            _pc("box", Vector3(-0.15, 1.24, float(sz) * 0.835), Vector3(1.9, 0.4, 0.04), glass)
+        _pc("box", Vector3(1.0, 1.1, 0), Vector3(0.1, 0.4, 1.5), glass)
+        _pc("box", Vector3(-1.3, 1.1, 0), Vector3(0.1, 0.4, 1.5), glass)
+        _pc("box", Vector3(-0.15, 1.52, 0), Vector3(2.1, 0.07, 1.6), paint.lightened(0.06))
+        _part("box", Vector3(1.55, 0.98, 0), Vector3(1.4, 0.08, 1.7), Vector3(0, 0, rng.randf_range(0, 6)), paint.lightened(0.04))
+    for sx in [-1.0, 1.0]:
+        for sz in [-1.0, 1.0]:
+            var wx := float(sx) * (clen * 0.5 - 0.85)
+            var wz := float(sz) * 0.9
+            _part("torus", Vector3(wx, 0.34, wz), Vector3(0.7, 1.8, 0.7), Vector3(90, 0, 0), dark)
+            _part("cyl", Vector3(wx, 0.34, wz), Vector3(0.38, 0.2, 0.38), Vector3(90, 0, 0), Color(0.45, 0.45, 0.48))
+    for sz in [-1.0, 1.0]:
+        _pc("box", Vector3(clen * 0.5, 0.7, float(sz) * 0.6), Vector3(0.05, 0.14, 0.3), Color(1.0, 0.95, 0.7))
+        _pc("box", Vector3(-clen * 0.5, 0.7, float(sz) * 0.6), Vector3(0.05, 0.14, 0.3), Color(0.55, 0.05, 0.05))
+    _pc("box", Vector3(clen * 0.5 + 0.03, 0.4, 0), Vector3(0.12, 0.16, 1.7), Color(0.12, 0.12, 0.13))
+    _pc("box", Vector3(-clen * 0.5 - 0.03, 0.4, 0), Vector3(0.12, 0.16, 1.7), Color(0.12, 0.12, 0.13))
+    if variant == 1:
+        _pc("box", Vector3(-0.15, 1.62, 0), Vector3(0.3, 0.14, 1.2), Color(0.1, 0.1, 0.1))
+        _pc("box", Vector3(-0.15, 1.72, -0.35), Vector3(0.25, 0.1, 0.4), Color(0.9, 0.1, 0.1))
+        _pc("box", Vector3(-0.15, 1.72, 0.35), Vector3(0.25, 0.1, 0.4), Color(0.15, 0.25, 0.9))
+        for sz in [-1.0, 1.0]:
+            _pc("box", Vector3(0.1, 0.72, float(sz) * 0.915), Vector3(1.6, 0.32, 0.03), Color(0.9, 0.9, 0.92))
+    elif rng.randf() < 0.5:
+        _pc("box", Vector3(0.2, 0.7, 0.92), Vector3(1.5, 0.3, 0.04), Color(0.38, 0.2, 0.1))
+    _col_box(Vector3.ZERO, Vector3(clen, 1.5, 1.85))
+
+func _p_bus(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    var paint := Color(0.78, 0.62, 0.12) if rng.randf() < 0.6 else Color(0.25, 0.4, 0.55)
+    var glass := Color(0.08, 0.11, 0.14)
+    _pc("box", Vector3(0, 1.45, 0), Vector3(9.0, 2.3, 2.6), paint.darkened(0.15))
+    _pc("box", Vector3(0, 0.55, 0), Vector3(8.6, 0.5, 2.5), Color(0.08, 0.08, 0.08))
+    _pc("box", Vector3(0, 1.95, 0), Vector3(9.05, 0.9, 2.62), glass)
+    for k in range(7):
+        _pc("box", Vector3(-3.6 + 1.2 * float(k), 1.95, 0), Vector3(0.1, 0.95, 2.66), paint.darkened(0.25))
+    _pc("box", Vector3(0, 2.62, 0), Vector3(9.0, 0.12, 2.5), paint.lightened(0.05))
+    _pc("box", Vector3(4.52, 1.8, 0), Vector3(0.06, 1.1, 2.4), glass)
+    _pc("box", Vector3(4.53, 2.45, 0), Vector3(0.05, 0.3, 1.5), Color(0.9, 0.6, 0.1))
+    _pc("box", Vector3(0, 1.2, 1.31), Vector3(9.0, 0.12, 0.04), paint.lightened(0.15))
+    for sx in [-3.0, 3.0]:
+        for sz in [-1.1, 1.1]:
+            _part("torus", Vector3(float(sx), 0.5, float(sz)), Vector3(1.0, 2.0, 1.0), Vector3(90, 0, 0), Color(0.04, 0.04, 0.04))
+            _part("cyl", Vector3(float(sx), 0.5, float(sz)), Vector3(0.55, 0.2, 0.55), Vector3(90, 0, 0), Color(0.5, 0.5, 0.52))
+    _pc("box", Vector3(4.5, 0.75, -0.9), Vector3(0.06, 0.2, 0.4), Color(1.0, 0.95, 0.7))
+    _pc("box", Vector3(4.5, 0.75, 0.9), Vector3(0.06, 0.2, 0.4), Color(1.0, 0.95, 0.7))
+    _col_box(Vector3.ZERO, Vector3(9.0, 2.7, 2.6))
+
+func _m_cone(rng: RandomNumberGenerator) -> void:
+    _pc("box", Vector3(0, 0.025, 0), Vector3(0.42, 0.05, 0.42), Color(0.08, 0.08, 0.08))
+    _pc("cone", Vector3(0, 0.3, 0), Vector3(0.34, 0.5, 0.34), Color(0.9, 0.38, 0.08))
+    _pc("cyl", Vector3(0, 0.27, 0), Vector3(0.26, 0.1, 0.26), Color(0.92, 0.92, 0.9))
+
+func _p_traffic_cone(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    var n := rng.randi_range(1, 3)
+    for i in range(n):
+        _sub(float(i) * 0.7 * rng.randf_range(0.8, 1.2), rng.randf_range(-0.3, 0.3), 0.0)
+        if i > 0 and rng.randf() < 0.3:
+            _part("cone", Vector3(0, 0.1, 0), Vector3(0.34, 0.5, 0.34), Vector3(0, 0, 90), Color(0.9, 0.38, 0.08))
+        else:
+            _m_cone(rng)
+        _sub_end()
+
+func _p_bench(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    _m_bench(rng)
+
+# Лавка: сидіння дивиться в -Z (спинка в +Z).
+func _m_bench(rng: RandomNumberGenerator) -> void:
+    var wood := Color(0.4, 0.26, 0.13)
+    var iron := Color(0.1, 0.1, 0.11)
+    for sx in [-0.8, 0.8]:
+        _pc("box", Vector3(float(sx), 0.22, 0), Vector3(0.1, 0.44, 0.5), iron)
+        _pc("box", Vector3(float(sx), 0.55, 0.22), Vector3(0.1, 0.5, 0.08), iron)
+    for k in range(3):
+        _pc("box", Vector3(0, 0.46, -0.16 + 0.16 * float(k)), Vector3(1.8, 0.05, 0.13), wood.lightened(0.03 * float(k)))
+    for k in range(2):
+        _pc("box", Vector3(0, 0.62 + 0.18 * float(k), 0.24), Vector3(1.8, 0.12, 0.05), wood)
+    _col_box(Vector3.ZERO, Vector3(1.9, 0.9, 0.7))
+
+func _p_bus_stop(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
+    var metal := Color(0.18, 0.2, 0.22)
+    _pc("box", Vector3(0, 0.03, 0), Vector3(3.4, 0.06, 1.6), Color(0.3, 0.3, 0.3))
+    for sx in [-1.5, 1.5]:
+        _pc("box", Vector3(float(sx), 1.2, 0.6), Vector3(0.12, 2.4, 0.12), metal)
+        _pc("box", Vector3(float(sx), 1.2, -0.6), Vector3(0.12, 2.4, 0.12), metal)
+    _pc("box", Vector3(0, 2.45, 0), Vector3(3.5, 0.12, 1.5), metal.lightened(0.1))
+    _pc("box", Vector3(0, 1.3, 0.62), Vector3(2.9, 1.9, 0.05), Color(0.2, 0.3, 0.34))
+    _pc("box", Vector3(1.0, 1.4, 0.58), Vector3(0.8, 1.2, 0.04), Color(0.6, 0.55, 0.2))
+    _sub(0.0, 0.2, 0.0)
+    _m_bench(rng)
+    _sub_end()
+    _pc("cyl", Vector3(2.2, 1.2, -0.7), Vector3(0.1, 2.4, 0.1), metal)
+    _pc("box", Vector3(2.2, 2.2, -0.7), Vector3(0.6, 0.6, 0.05), Color(0.1, 0.3, 0.6))
+    _col_box(Vector3(0, 0, 0.2), Vector3(3.5, 2.4, 1.4))
+
+func _p_mailbox(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    var c := Color(0.12, 0.25, 0.55)
+    _pc("box", Vector3(0, 0.45, 0), Vector3(0.5, 0.9, 0.4), c)
+    _part("cyl", Vector3(0, 0.95, 0), Vector3(0.4, 0.5, 0.4), Vector3(0, 0, 90), c.lightened(0.05))
+    _pc("box", Vector3(0, 0.55, -0.205), Vector3(0.36, 0.05, 0.02), Color(0.04, 0.04, 0.05))
+    _pc("box", Vector3(0, 0.08, 0), Vector3(0.55, 0.16, 0.45), c.darkened(0.3))
+    _col_cyl(Vector3.ZERO, 0.28, 1.2)
+
+func _p_hydrant(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    var c := Color(0.7, 0.1, 0.08)
+    _pc("cyl", Vector3(0, 0.1, 0), Vector3(0.42, 0.2, 0.42), c.darkened(0.2))
+    _pc("cyl", Vector3(0, 0.45, 0), Vector3(0.3, 0.7, 0.3), c)
+    _pc("sphere", Vector3(0, 0.82, 0), Vector3(0.36, 0.3, 0.36), c.lightened(0.05))
+    _pc("cyl", Vector3(0, 0.98, 0), Vector3(0.1, 0.1, 0.1), c.darkened(0.1))
+    _part("cyl", Vector3(0, 0.55, 0), Vector3(0.18, 0.62, 0.18), Vector3(0, 0, 90), c.darkened(0.08))
+    _part("cyl", Vector3(0.2, 0.55, 0), Vector3(0.16, 0.1, 0.16), Vector3(0, 0, 90), Color(0.5, 0.5, 0.5))
+    _col_cyl(Vector3.ZERO, 0.3, 1.0)
+
+func _p_newspaper_box(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    var c := Color.from_hsv(rng.randf(), 0.6, 0.45)
+    _pc("box", Vector3(0, 0.5, 0), Vector3(0.5, 0.9, 0.45), c)
+    _pc("box", Vector3(0, 0.62, -0.23), Vector3(0.32, 0.4, 0.03), Color(0.12, 0.16, 0.2))
+    _pc("box", Vector3(0, 0.98, 0), Vector3(0.54, 0.06, 0.49), c.darkened(0.2))
+    _pc("box", Vector3(0, 0.12, 0), Vector3(0.45, 0.24, 0.4), Color(0.12, 0.12, 0.13))
+    _col_cyl(Vector3.ZERO, 0.3, 1.0)
 
 func _p_streetlamp(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, rng.randf() * TAU)
     var metal := Color(0.16, 0.17, 0.18)
-    if rng.randf() < 0.3:
-        _part("cyl", Vector3(0, 0.12, 0), Vector3(0.18, 4.5, 0.18), Vector3(90, 0, 0), metal)
-        _part("box", Vector3(0, 0.1, -2.4), Vector3(0.5, 0.12, 0.25), Vector3.ZERO, Color(0.3, 0.3, 0.28))
-    else:
-        _part("cyl", Vector3(0, 2.3, 0), Vector3(0.18, 4.6, 0.18), Vector3.ZERO, metal)
-        _part("box", Vector3(0.5, 4.55, 0), Vector3(1.1, 0.1, 0.1), Vector3.ZERO, metal)
-        _part("box", Vector3(1.0, 4.45, 0), Vector3(0.5, 0.12, 0.25), Vector3.ZERO, Color(0.35, 0.34, 0.3))
-        _col_cyl(Vector3.ZERO, 0.2, 4.0)
+    if rng.randf() < 0.22:
+        # лежить упалий
+        _pb("cyl", Vector3(-2.2, 0.14, 0), Vector3(2.2, 0.14, 0.15), 0.2, metal)
+        _pc("cyl", Vector3(-2.2, 0.14, 0), Vector3(0.36, 0.1, 0.36), metal.lightened(0.05))
+        _pb("cyl", Vector3(2.2, 0.14, 0.15), Vector3(2.9, 0.2, 0.6), 0.1, metal)
+        _pc("box", Vector3(3.15, 0.15, 0.7), Vector3(0.5, 0.12, 0.25), Color(0.35, 0.34, 0.3))
+        _col_box(Vector3(0.2, 0, 0.05), Vector3(5.6, 0.3, 0.3))
+        return
+    _pc("cyl", Vector3(0, 0.18, 0), Vector3(0.4, 0.36, 0.4), metal.lightened(0.05))
+    _pc("cyl", Vector3(0, 1.4, 0), Vector3(0.2, 2.4, 0.2), metal)
+    _pc("cyl", Vector3(0, 3.5, 0), Vector3(0.15, 2.0, 0.15), metal)
+    _pb("cyl", Vector3(0, 4.45, 0), Vector3(0.45, 4.7, 0), 0.12, metal)
+    _pb("cyl", Vector3(0.4, 4.7, 0), Vector3(1.05, 4.6, 0), 0.1, metal)
+    _pc("box", Vector3(1.15, 4.5, 0), Vector3(0.6, 0.12, 0.3), Color(0.3, 0.3, 0.28))
+    _pc("box", Vector3(1.15, 4.42, 0), Vector3(0.46, 0.05, 0.22), Color(1.0, 0.92, 0.65))
+    _col_cyl(Vector3.ZERO, 0.22, 4.0)
+    _light_local(4.3, 1.4, 9.0, Color(1.0, 0.85, 0.55))
 
 func _p_dumpster(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, rng.randf() * TAU)
-    var c := Color(0.1, 0.2, 0.13).darkened(rng.randf_range(0.0, 0.3))
-    _part("box", Vector3(0, 0.55, 0), Vector3(1.9, 1.1, 0.95), Vector3.ZERO, c)
-    _part("box", Vector3(0.1, 1.14, -0.1), Vector3(1.95, 0.08, 1.0), Vector3(rng.randf_range(-8, 8), 0, rng.randf_range(-6, 6)), c.darkened(0.15))
-    _col_box(Vector3.ZERO, Vector3(1.9, 1.1, 0.95))
+    var c := Color(0.1, 0.22, 0.14).darkened(rng.randf_range(0.0, 0.3))
+    _pc("box", Vector3(0, 0.6, 0), Vector3(1.9, 1.0, 0.95), c)
+    _pc("box", Vector3(0, 0.1, 0), Vector3(1.8, 0.2, 0.85), Color(0.06, 0.06, 0.07))
+    _pc("box", Vector3(0, 1.12, 0.0), Vector3(1.96, 0.07, 1.02), c.darkened(0.12))
+    for k in range(3):
+        _pc("box", Vector3(-0.6 + 0.6 * float(k), 0.6, -0.49), Vector3(0.06, 0.9, 0.03), c.lightened(0.1))
+    _part("box", Vector3(0.0, 1.25, 0.58), Vector3(1.9, 0.07, 0.6), Vector3(rng.randf_range(-70, -40), 0, 0), c.darkened(0.2))
+    for sx in [-0.8, 0.8]:
+        _pc("cyl", Vector3(float(sx), 0.1, 0.5), Vector3(0.2, 0.2, 0.2), Color(0.05, 0.05, 0.05))
+    for i in range(rng.randi_range(1, 3)):
+        _clump(Vector3(rng.randf_range(-0.7, 0.7), 1.2, rng.randf_range(-0.2, 0.2)), Vector3(0.5, 0.35, 0.45), Color(0.06, 0.06, 0.07), rng)
+    _col_box(Vector3.ZERO, Vector3(1.9, 1.2, 0.95))
 
 func _p_barricade(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, rng.randf() * TAU)
-    var conc := Color(0.4, 0.4, 0.38)
-    _part("box", Vector3(-1.2, 0.45, 0), Vector3(2.2, 0.9, 0.5), Vector3(0, rng.randf_range(-8, 8), 0), _jit(conc, 0.04, rng))
-    _part("box", Vector3(1.2, 0.45, 0.1), Vector3(2.2, 0.9, 0.5), Vector3(0, rng.randf_range(-8, 8), 0), _jit(conc, 0.04, rng))
-    for i in range(4):
-        _part("sphere", Vector3(-1.5 + 0.9 * float(i), 1.0, 0.0), Vector3(0.7, 0.35, 0.45), Vector3(0, rng.randf_range(-20, 20), 0), Color(0.42, 0.36, 0.24))
-    _col_box(Vector3(0, 0, 0.05), Vector3(4.6, 1.0, 0.6))
+    _m_barricade(rng)
+
+func _m_barricade(rng: RandomNumberGenerator) -> void:
+    var conc := Color(0.45, 0.45, 0.42)
+    for sx in [-1.2, 1.2]:
+        var yw := rng.randf_range(-6.0, 6.0)
+        _part("box", Vector3(float(sx), 0.18, 0.0), Vector3(2.2, 0.36, 0.7), Vector3(0, yw, 0), _jit(conc, 0.04, rng))
+        _part("box", Vector3(float(sx), 0.6, 0.0), Vector3(2.2, 0.5, 0.42), Vector3(0, yw, 0), _jit(conc, 0.04, rng))
+        _part("box", Vector3(float(sx) - 0.8, 0.9, 0.0), Vector3(0.5, 0.12, 0.38), Vector3(0, yw, 0), Color(0.85, 0.15, 0.1))
+        _part("box", Vector3(float(sx) + 0.3, 0.9, 0.0), Vector3(0.5, 0.12, 0.38), Vector3(0, yw, 0), Color(0.9, 0.9, 0.9))
+    for i in range(5):
+        _clump(Vector3(-1.8 + 0.9 * float(i), 1.1, rng.randf_range(-0.08, 0.1)), Vector3(0.8, 0.4, 0.5), Color(0.5, 0.42, 0.28).darkened(rng.randf_range(0.0, 0.15)), rng)
+    _pb("cyl", Vector3(-1.8, 0.1, -0.6), Vector3(-1.8, 0.95, -0.6), 0.06, Color(0.18, 0.18, 0.2))
+    _col_box(Vector3(0, 0, 0.0), Vector3(4.8, 1.2, 0.8))
 
 func _p_fire_barrel(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, 0.0)
-    _part("cyl", Vector3(0, 0.5, 0), Vector3(0.7, 1.0, 0.7), Vector3.ZERO, Color(0.2, 0.12, 0.08))
-    _part("cone", Vector3(0, 1.3, 0), Vector3(0.5, 0.8, 0.5), Vector3.ZERO, Color(1.0, 0.5, 0.1))
-    _part("sphere", Vector3(0.05, 1.1, 0), Vector3(0.4, 0.35, 0.4), Vector3.ZERO, Color(1.0, 0.8, 0.25))
+    _m_fire_barrel(rng)
+
+func _m_fire_barrel(rng: RandomNumberGenerator) -> void:
+    var steel := Color(0.22, 0.14, 0.1)
+    _pc("cyl", Vector3(0, 0.5, 0), Vector3(0.7, 1.0, 0.7), steel)
+    for yy in [0.2, 0.8]:
+        _pc("torus", Vector3(0, float(yy), 0), Vector3(0.74, 0.7, 0.74), steel.darkened(0.3))
+    _pc("cyl", Vector3(0, 1.0, 0), Vector3(0.62, 0.06, 0.62), Color(0.1, 0.06, 0.05))
+    _pc("cone", Vector3(0, 1.4, 0), Vector3(0.5, 0.8, 0.5), Color(1.0, 0.5, 0.1))
+    _pc("cone", Vector3(0.1, 1.3, 0.05), Vector3(0.3, 0.6, 0.3), Color(1.0, 0.75, 0.2))
+    _pc("sphere", Vector3(0.05, 1.08, 0), Vector3(0.4, 0.2, 0.4), Color(1.0, 0.8, 0.25))
     _col_cyl(Vector3.ZERO, 0.4, 1.0)
-    if _lights.is_empty():
-        _lights.append({"pos": Vector3(x, 1.7, z), "color": Color(1.0, 0.5, 0.2), "energy": 2.4, "range": 11.0})
+    _light_local(1.7, 2.4, 11.0, Color(1.0, 0.5, 0.2))
+
+func _p_sign(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    var metal := Color(0.2, 0.2, 0.22)
+    _pc("cyl", Vector3(0, 1.2, 0), Vector3(0.08, 2.4, 0.08), metal)
+    _pc("cyl", Vector3(0, 0.08, 0), Vector3(0.3, 0.16, 0.3), metal.lightened(0.04))
+    var tilt := rng.randf_range(-12, 12)
+    if rng.randf() < 0.5:
+        _part("cyl", Vector3(0, 2.3, -0.06), Vector3(0.85, 0.05, 0.85), Vector3(90, 0, tilt), Color(0.6, 0.1, 0.08))
+        _part("cyl", Vector3(0, 2.3, -0.09), Vector3(0.62, 0.03, 0.62), Vector3(90, 0, tilt), Color(0.62, 0.15, 0.12))
+        _part("box", Vector3(0, 2.3, -0.1), Vector3(0.6, 0.12, 0.03), Vector3(0, 0, tilt), Color(0.92, 0.92, 0.9))
+    else:
+        _part("box", Vector3(0, 2.3, -0.06), Vector3(0.9, 0.7, 0.05), Vector3(0, 0, tilt), Color(0.8, 0.68, 0.12))
+        _part("box", Vector3(0, 2.3, -0.1), Vector3(0.72, 0.52, 0.03), Vector3(0, 0, tilt), Color(0.08, 0.08, 0.08))
+        _part("box", Vector3(0, 2.3, -0.12), Vector3(0.1, 0.34, 0.03), Vector3(0, 0, tilt), Color(0.8, 0.68, 0.12))
+    _col_cyl(Vector3.ZERO, 0.15, 2.4)
+
+func _p_crosswalk(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
+    for k in range(9):
+        _pc("box", Vector3(-3.6 + 0.9 * float(k), 0.02, 0), Vector3(0.45, 0.02, 2.0), Color(0.55, 0.55, 0.5))
+
+# Блокпост: дві поліцейські машини «ялинкою» впоперек дороги (дорога вздовж X), конуси, ящики, тіла. Фасад (-Z) — до гравця.
+func _p_road_block(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
+    _sub(-1.6, -2.3, deg_to_rad(rng.randf_range(10, 25)))
+    _m_car(rng, 1)
+    _sub_end()
+    _sub(1.8, 2.5, deg_to_rad(rng.randf_range(160, 175)))
+    _m_car(rng, 1)
+    _sub_end()
+    for k in range(4):
+        _sub(-6.0 + 3.6 * float(k), -5.0 + rng.randf_range(-0.3, 0.3), 0.0)
+        _m_cone(rng)
+        _sub_end()
+    _sub(0.0, -0.1, 0.0)
+    _m_barricade(rng)
+    _sub_end()
+    _sub(-0.6, 4.5, 0.0)
+    _m_corpse(rng)
+    _sub_end()
+    _sub(4.2, -0.6, 0.5)
+    _m_blood(rng)
+    _sub_end()
+
+# Колишній склад: уламки будівлі з рештками стін, плитами й арматурою.
+func _p_ruined_building(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
+    var c := _jit(Color(0.32, 0.24, 0.21), 0.04, rng)
+    var w := rng.randf_range(8.0, 11.0)
+    var d := rng.randf_range(6.0, 8.0)
+    _pc("box", Vector3(0, 0.05, 0), Vector3(w, 0.1, d), Color(0.14, 0.13, 0.13))
+    _wall_line(-w * 0.5, -d * 0.5, w * 0.5, -d * 0.5, rng, 3.0, 7.0, c, 2, 2)
+    _wall_line(-w * 0.5, d * 0.5, w * 0.5, d * 0.5, rng, 2.5, 6.0, c, 3, 2)
+    _wall_line(-w * 0.5, -d * 0.5, -w * 0.5, d * 0.5, rng, 2.0, 6.5, c)
+    _wall_line(w * 0.5, -d * 0.5, w * 0.5, d * 0.5, rng, 1.0, 5.0, c, 1, 2)
+    _part("box", Vector3(1.0, 2.2, 0.5), Vector3(3.5, 0.25, 2.5), Vector3(0, 10, 18), Color(0.28, 0.27, 0.27))
+    _part("box", Vector3(-1.8, 1.4, -0.5), Vector3(3.0, 0.22, 2.2), Vector3(0, -15, -10), Color(0.26, 0.26, 0.27))
+    # вікна: темні прорізи на фасаді
+    for k in range(4):
+        _pc("box", Vector3(-w * 0.5 + 1.2 + (w - 2.4) * float(k) / 3.0, 2.0, -d * 0.5 - 0.31), Vector3(0.9, 1.1, 0.04), Color(0.03, 0.03, 0.04))
+    for i in range(5):
+        var a := rng.randf() * TAU
+        _pb("cyl", Vector3(cos(a) * w * 0.4, 0.2, sin(a) * d * 0.4), Vector3(cos(a) * w * 0.4 + 0.2, 1.6 + rng.randf() * 0.8, sin(a) * d * 0.4), 0.04, Color(0.3, 0.14, 0.1))
+    for i in range(6):
+        var s := rng.randf_range(0.2, 0.5)
+        _chunk_of_rock(Vector3(rng.randf_range(-w * 0.4, w * 0.4), s * 0.3, rng.randf_range(-d * 0.4, d * 0.4)), Vector3(s, s * 0.7, s), _stone(rng), rng)
+
+func _p_crack(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    for i in range(3):
+        _part("box", Vector3(rng.randf_range(-1.0, 1.0), 0.015, rng.randf_range(-1.0, 1.0)), Vector3(rng.randf_range(1.0, 3.5), 0.02, 0.06), Vector3(0, rng.randf() * 180.0, 0), Color(0.04, 0.04, 0.045))
+
+func _p_road_mark(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
+    for i in range(4):
+        _pc("box", Vector3(-3.0 + 2.0 * float(i), 0.02, 0), Vector3(1.0, 0.02, 0.16), Color(0.6, 0.55, 0.22))
+
+func _p_manhole(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, 0.0)
+    _pc("cyl", Vector3(0, 0.02, 0), Vector3(0.9, 0.03, 0.9), Color(0.08, 0.08, 0.09))
+    _pc("cyl", Vector3(0, 0.035, 0), Vector3(0.7, 0.02, 0.7), Color(0.12, 0.12, 0.13))
+
+# ---------- Болото ----------
+func _p_sunken_boat(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    var wood := Color(0.3, 0.2, 0.11)
+    _part("sphere", Vector3(0, 0.1, 0), Vector3(3.6, 1.0, 1.4), Vector3(0, 0, rng.randf_range(-8, 8)), wood)
+    _pc("sphere", Vector3(0, 0.34, 0), Vector3(3.2, 0.5, 1.0), wood.darkened(0.55))
+    for k in range(4):
+        _pc("box", Vector3(-1.1 + 0.75 * float(k), 0.4, 0), Vector3(0.1, 0.12, 1.3), wood.lightened(0.05))
+    _pb("cyl", Vector3(0.6, 0.4, 0.2), Vector3(2.4, 1.1, 0.9), 0.07, wood.lightened(0.08))
+    _pc("sphere", Vector3(1.0, 0.45, -0.1), Vector3(0.6, 0.2, 0.5), Color(0.14, 0.26, 0.1))
+    _col_box(Vector3.ZERO, Vector3(3.6, 0.8, 1.5))
+
+func _p_swamp_hut_body(rng: RandomNumberGenerator) -> void:
+    var wood := Color(0.34, 0.24, 0.14)
+    for sx in [-1.3, 1.3]:
+        for sz in [-1.1, 1.1]:
+            _pb("cyl", Vector3(float(sx), 0.0, float(sz)), Vector3(float(sx), 1.35, float(sz)), 0.22, wood.darkened(0.2))
+    _pc("box", Vector3(0, 1.4, 0), Vector3(3.2, 0.14, 2.8), wood)
+    _pc("box", Vector3(0, 2.2, 0.1), Vector3(2.8, 1.5, 2.4), wood.lightened(0.04))
+    for k in range(5):
+        _pc("box", Vector3(-1.2 + 0.6 * float(k), 2.2, -1.12), Vector3(0.05, 1.5, 0.05), wood.darkened(0.2))
+    _pc("wedge", Vector3(0, 3.3, 0.1), Vector3(3.3, 1.1, 3.0), Color(0.3, 0.38, 0.16))
+    _pc("box", Vector3(0, 1.9, -1.12), Vector3(0.8, 1.2, 0.06), Color(0.14, 0.09, 0.05))
+    _pc("box", Vector3(0.9, 2.4, -1.12), Vector3(0.5, 0.45, 0.06), Color(1.0, 0.8, 0.4))
+    _pb("box", Vector3(-0.4, 0.0, -2.1), Vector3(-0.4, 1.45, -1.2), 0.1, wood.darkened(0.1))
+    _pb("box", Vector3(0.4, 0.0, -2.1), Vector3(0.4, 1.45, -1.2), 0.1, wood.darkened(0.1))
+    for k in range(4):
+        _pc("box", Vector3(0, 0.25 + 0.3 * float(k), -1.9 + 0.2 * float(k)), Vector3(0.9, 0.06, 0.08), wood)
+    _col_box(Vector3(0, 0, 0), Vector3(3.2, 3.0, 2.9))
+
+# Болотна садиба: хата на палях, човен біля сходів, очерет.
+func _p_swamp_homestead(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
+    _p_swamp_hut_body(rng)
+    _sub(4.2, -1.0, rng.randf_range(0.2, 0.8))
+    var wood := Color(0.3, 0.2, 0.11)
+    _part("sphere", Vector3(0, 0.1, 0), Vector3(3.4, 0.9, 1.3), Vector3.ZERO, wood)
+    _pc("sphere", Vector3(0, 0.3, 0), Vector3(3.0, 0.5, 0.95), wood.darkened(0.55))
+    _col_box(Vector3.ZERO, Vector3(3.4, 0.7, 1.4), 0.0)
+    _sub_end()
+    for i in range(3):
+        _sub(rng.randf_range(-3.6, 3.6), rng.randf_range(2.6, 3.8), 0.0)
+        _p_reeds_body(rng)
+        _sub_end()
+    _sub(-3.0, -2.6, 0.0)
+    _m_barrel(rng)
+    _sub_end()
+
+func _p_reeds_body(rng: RandomNumberGenerator) -> void:
+    var c := Color(0.30, 0.42, 0.18)
+    for i in range(rng.randi_range(6, 9)):
+        var a := rng.randf() * TAU
+        var r := rng.randf_range(0.0, 0.5)
+        var base := Vector3(cos(a) * r, 0.0, sin(a) * r)
+        var tip := base + Vector3(rng.randf_range(-0.15, 0.15), rng.randf_range(0.9, 1.6), rng.randf_range(-0.15, 0.15))
+        _pb("cyl", base, tip, 0.04, _jit(c, 0.06, rng))
+        if rng.randf() < 0.5:
+            _pb("cyl", tip - Vector3(0, 0.3, 0), tip + Vector3(0, 0.12, 0), 0.09, Color(0.32, 0.2, 0.1))
+
+func _m_barrel(rng: RandomNumberGenerator) -> void:
+    var w := Color(0.4, 0.27, 0.14)
+    _pc("cyl", Vector3(0, 0.45, 0), Vector3(0.65, 0.9, 0.65), w)
+    for yy in [0.2, 0.7]:
+        _pc("torus", Vector3(0, float(yy), 0), Vector3(0.68, 0.6, 0.68), Color(0.14, 0.12, 0.1))
+    _pc("cyl", Vector3(0, 0.9, 0), Vector3(0.55, 0.03, 0.55), w.lightened(0.1))
+    _col_cyl(Vector3.ZERO, 0.36, 0.9)
+
+func _m_crate(rng: RandomNumberGenerator) -> void:
+    var w := _jit(Color(0.45, 0.32, 0.17), 0.04, rng)
+    _pc("box", Vector3(0, 0.35, 0), Vector3(0.7, 0.7, 0.7), w)
+    for sx in [-1.0, 1.0]:
+        _pc("box", Vector3(float(sx) * 0.34, 0.35, 0), Vector3(0.06, 0.74, 0.74), w.darkened(0.25))
+    _pc("box", Vector3(0, 0.72, 0), Vector3(0.74, 0.06, 0.74), w.darkened(0.15))
+    _col_box(Vector3.ZERO, Vector3(0.72, 0.7, 0.72))
+
+# ---------- Пожежа, попіл ----------
+func _p_collapsed_chimney(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    var br := Color(0.32, 0.2, 0.16)
+    var soot := Color(0.08, 0.07, 0.07)
+    _pc("box", Vector3(0, 0.15, 0), Vector3(2.4, 0.3, 1.8), Color(0.2, 0.17, 0.15))
+    _pc("box", Vector3(0, 1.4, 0.25), Vector3(1.9, 2.5, 0.9), br)
+    _pc("box", Vector3(0, 0.85, -0.2), Vector3(1.1, 1.4, 0.15), soot)
+    _pc("box", Vector3(0, 1.0, 0.0), Vector3(1.4, 1.6, 0.05), soot.lightened(0.04))
+    _pc("box", Vector3(0, 2.8, 0.3), Vector3(1.1, 1.5, 0.75), br.darkened(0.05))
+    _part("box", Vector3(0.2, 3.7, 0.3), Vector3(0.75, 0.9, 0.7), Vector3(0, 0, 14), br.darkened(0.1))
+    _pc("box", Vector3(0, 2.35, -0.3), Vector3(1.8, 0.12, 0.4), br.darkened(0.2))
+    for i in range(8):
+        var s := rng.randf_range(0.2, 0.45)
+        _part("box", Vector3(rng.randf_range(-1.6, 1.6), s * 0.35, rng.randf_range(-1.6, 0.3) - 0.8), Vector3(s, s * 0.6, s * 1.2), Vector3(rng.randf_range(-8, 8), rng.randf() * 180.0, rng.randf_range(-15, 15)), _jit(br, 0.05, rng))
+    _pb("box", Vector3(-1.4, 0.1, -1.0), Vector3(-0.6, 1.5, -0.3), 0.18, soot)
+    _pc("sphere", Vector3(0.2, 0.12, -0.8), Vector3(0.4, 0.2, 0.4), Color(1.0, 0.4, 0.08))
+    _col_box(Vector3(0, 0, 0.1), Vector3(2.4, 3.0, 1.6))
+
+func _p_charred_cart(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    _m_cart(rng, 2)
+    _pc("sphere", Vector3(0.1, 1.0, 0.0), Vector3(0.5, 0.25, 0.4), Color(1.0, 0.38, 0.06))
+    _pc("sphere", Vector3(-0.6, 0.95, 0.1), Vector3(0.35, 0.2, 0.3), Color(1.0, 0.55, 0.12))
+
+func _p_burning_tree(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    var h := rng.randf_range(2.6, 3.8)
+    var char_c := _jit(Color(0.08, 0.06, 0.05), 0.02, rng)
+    _pc("cone", Vector3(0, 0.45, 0), Vector3(0.95, 0.9, 0.95), char_c.darkened(0.1))
+    _pc("cyl", Vector3(0, h * 0.5, 0), Vector3(0.45, h, 0.45), char_c)
+    for i in range(4):
+        var a := rng.randf() * TAU
+        var y0 := h * rng.randf_range(0.5, 0.85)
+        var p1 := Vector3(cos(a) * 1.0, y0 + rng.randf_range(0.4, 0.9), sin(a) * 1.0)
+        _pb("cone", Vector3(0, y0, 0), p1, 0.15, char_c)
+        _pc("cone", p1 + Vector3(0, 0.3, 0), Vector3(0.4, 0.8, 0.4), Color(1.0, 0.5, 0.08))
+    _pc("cone", Vector3(0, h + 0.5, 0), Vector3(1.5, 2.1, 1.5), Color(1.0, 0.36, 0.05))
+    _pc("cone", Vector3(0, h + 0.3, 0), Vector3(0.9, 1.4, 0.9), Color(1.0, 0.72, 0.18))
+    _pc("cone", Vector3(0.7, h * 0.7, 0.2), Vector3(0.6, 1.0, 0.6), Color(1.0, 0.45, 0.08))
+    for i in range(4):
+        _pc("sphere", Vector3(rng.randf_range(-0.8, 0.8), 0.04, rng.randf_range(-0.8, 0.8)), Vector3(0.25, 0.1, 0.25), Color(1.0, 0.4, 0.08))
+    _col_cyl(Vector3.ZERO, 0.35, 3.0)
+    _light_local(h + 0.6, 2.6, 13.0, Color(1.0, 0.45, 0.15))
+
+# ---------- Складені сцени ----------
+func _p_farmstead(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
+    var wood := _jit(Color(0.42, 0.28, 0.14), 0.04, rng)
+    var hw := 6.4
+    var d0 := -5.6
+    var d1 := 5.6
+    _fence_run(-hw, d0, -1.7, d0, wood, rng)
+    _fence_run(1.7, d0, hw, d0, wood, rng)
+    _fence_run(-hw, d1, hw, d1, wood, rng)
+    _fence_run(-hw, d0, -hw, d1, wood, rng)
+    _fence_run(hw, d0, hw, d1, wood, rng)
+    for sx in [-1.7, 1.7]:
+        _pc("box", Vector3(float(sx), 0.85, d0), Vector3(0.2, 1.7, 0.2), wood.darkened(0.15))
+    _pc("box", Vector3(0, 0.02, -2.3), Vector3(1.5, 0.03, 6.2), Color(0.34, 0.27, 0.16))
+    _sub(0.0, 1.8, 0.0)
+    _m_hut(rng)
+    _sub_end()
+    _sub(-4.1, -2.5, rng.randf() * TAU)
+    _m_well(rng, false)
+    _sub_end()
+    _sub(4.3, 3.2, rng.randf() * TAU)
+    _m_haystack(rng)
+    _sub_end()
+    _sub(-3.9, 3.4, 0.0)
+    _m_crops(rng)
+    _sub_end()
+    _sub(4.2, -3.0, rng.randf_range(-0.6, 0.6))
+    _m_scarecrow(rng)
+    _sub_end()
+    _sub(4.6, 0.3, PI * 0.5)
+    _m_log(rng, true)
+    _sub_end()
+
+func _m_tent(rng: RandomNumberGenerator) -> void:
+    var canvas := Color.from_hsv(rng.randf_range(0.05, 0.14), 0.25, rng.randf_range(0.5, 0.62))
+    if rng.randf() < 0.4:
+        canvas = Color(0.28, 0.4, 0.3)
+    _part("wedge", Vector3(0, 0.85, 0), Vector3(2.8, 1.7, 2.2), Vector3(0, 90, 0), canvas)
+    _pc("box", Vector3(0, 0.55, -1.42), Vector3(0.75, 1.1, 0.05), Color(0.08, 0.07, 0.06))
+    _pc("wedge", Vector3(0, 1.1, -1.4), Vector3(0.05, 0.6, 0.05), canvas.darkened(0.3))
+    _pb("cyl", Vector3(0, 0.0, -1.55), Vector3(0, 1.8, -1.55), 0.06, Color(0.35, 0.24, 0.12))
+    for sx in [-1.0, 1.0]:
+        _pb("cyl", Vector3(float(sx) * 0.9, 0.9, -1.3), Vector3(float(sx) * 1.6, 0.0, -1.9), 0.02, Color(0.7, 0.65, 0.5))
+        _pb("cyl", Vector3(float(sx) * 1.55, 0.0, -1.9), Vector3(float(sx) * 1.6, 0.18, -1.95), 0.05, Color(0.4, 0.3, 0.2))
+    _col_box(Vector3.ZERO, Vector3(2.3, 1.6, 2.9))
+
+func _p_tent(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    _m_tent(rng)
+
+func _m_campfire(rng: RandomNumberGenerator) -> void:
+    _pc("cyl", Vector3(0, 0.015, 0), Vector3(1.9, 0.03, 1.9), Color(0.08, 0.06, 0.05))
+    for i in range(9):
+        var a := TAU * float(i) / 9.0
+        _chunk_of_rock(Vector3(cos(a) * 0.75, 0.1, sin(a) * 0.75), Vector3(0.38, 0.26, 0.34), _stone(rng).darkened(0.1), rng)
+    for i in range(3):
+        var a := TAU * float(i) / 3.0 + 0.4
+        _pb("cyl", Vector3(cos(a) * 0.55, 0.1, sin(a) * 0.55), Vector3(-cos(a) * 0.1, 0.5, -sin(a) * 0.1), 0.14, Color(0.28, 0.18, 0.1))
+    _pc("cone", Vector3(0, 0.55, 0), Vector3(0.6, 1.1, 0.6), Color(1.0, 0.45, 0.08))
+    _pc("cone", Vector3(0, 0.45, 0), Vector3(0.36, 0.8, 0.36), Color(1.0, 0.8, 0.25))
+    _pc("sphere", Vector3(0, 0.15, 0), Vector3(0.7, 0.2, 0.7), Color(1.0, 0.55, 0.12))
+    # триніжок із казанком
+    for i in range(3):
+        var a := TAU * float(i) / 3.0 + 1.0
+        _pb("cyl", Vector3(cos(a) * 1.1, 0.0, sin(a) * 1.1), Vector3(0, 1.9, 0), 0.06, Color(0.2, 0.15, 0.1))
+    _pc("sphere", Vector3(0, 1.25, 0), Vector3(0.55, 0.45, 0.55), Color(0.08, 0.08, 0.09))
+    _col_cyl(Vector3.ZERO, 0.95, 0.6)
+    _light_local(1.1, 2.6, 12.0, Color(1.0, 0.55, 0.2))
+
+# Табір: вогнище, колоди-лавки навколо (лицем до вогню), намети входом до вогню, ящики.
+func _p_camp(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    _m_campfire(rng)
+    var a0 := rng.randf() * TAU
+    for i in range(3):
+        var a := a0 + TAU * float(i) / 3.0 + rng.randf_range(-0.2, 0.2)
+        _sub(cos(a) * 6.6, sin(a) * 6.6, atan2(cos(a), sin(a)))
+        _m_tent(rng)
+        _sub_end()
+        var b := a + TAU / 6.0
+        _sub(cos(b) * 2.9, sin(b) * 2.9, atan2(cos(b), sin(b)))
+        _m_log(rng, true)
+        _sub_end()
+    var cb := a0 + TAU / 6.0 + 0.5
+    _sub(cos(cb) * 4.6, sin(cb) * 4.6, rng.randf() * TAU)
+    _m_crate(rng)
+    _sub_end()
+    _sub(cos(cb) * 4.6 + 0.9, sin(cb) * 4.6 + 0.3, rng.randf() * TAU)
+    _m_barrel(rng)
+    _sub_end()
+
+func _p_ice_camp(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
+    _sub(0.0, 1.5, 0.0)
+    _m_igloo(rng)
+    _sub_end()
+    _sub(-4.6, -1.6, rng.randf_range(-0.5, 0.5))
+    _m_cart(rng, 1)
+    _sub_end()
+    _sub(4.4, -1.8, rng.randf() * TAU)
+    _m_frozen_statue(rng)
+    _sub_end()
+    _sub(3.2, 3.6, 0.0)
+    _m_fire_barrel(rng)
+    _sub_end()
+    _sub(-3.0, 4.4, rng.randf() * TAU)
+    _m_crate(rng)
+    _sub_end()
+
+func _p_caravan(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    _sub(0.0, 0.0, 0.0)
+    _m_cart(rng, 1)
+    _sub_end()
+    _sub(3.4, -2.2, rng.randf() * TAU)
+    _m_crate(rng)
+    _sub_end()
+    _sub(3.8, -0.9, rng.randf() * TAU)
+    _m_barrel(rng)
+    _sub_end()
+    _sub(-3.0, 3.0, rng.randf() * TAU)
+    _m_bones(rng)
+    _sub_end()
+    _sub(-1.6, -3.4, rng.randf() * TAU)
+    _m_corpse(rng)
+    _sub_end()
+    _sub(2.2, 3.2, rng.randf() * TAU)
+    _m_bones(rng)
+    _sub_end()
+
+func _p_burned_farm(x: float, z: float, rng: RandomNumberGenerator) -> void:
+    _begin(x, z, rng.randf() * TAU)
+    var soot := Color(0.09, 0.07, 0.06)
+    for i in range(3):
+        _pb("box", Vector3(rng.randf_range(-3.0, 3.0), 0.0, rng.randf_range(-2.5, 2.5)), Vector3(rng.randf_range(-3.0, 3.0), rng.randf_range(0.8, 2.2), rng.randf_range(-2.5, 2.5)), 0.26, soot)
+    _pc("cyl", Vector3(0, 0.03, 0), Vector3(5.0, 0.04, 4.4), Color(0.12, 0.05, 0.03))
+    for i in range(5):
+        _pc("sphere", Vector3(rng.randf_range(-2.2, 2.2), 0.12, rng.randf_range(-2.0, 2.0)), Vector3(0.35, 0.22, 0.35), Color(1.0, rng.randf_range(0.3, 0.5), 0.07))
+    _col_cyl(Vector3.ZERO, 0.9, 1.5)
+    _sub(4.8, 1.2, rng.randf() * TAU)
+    _m_cart(rng, 2)
+    _sub_end()
+    _sub(-4.6, -1.6, rng.randf() * TAU)
+    _m_well(rng, true)
+    _sub_end()
+    _light_local(1.2, 2.6, 13.0, Color(1.0, 0.45, 0.15))
+
 
 # ---------- Пожежа: вогонь і спалені об'єкти ----------
 func _fire_light(x: float, z: float, y: float) -> void:
@@ -1864,23 +3375,6 @@ func _p_embers(x: float, z: float, rng: RandomNumberGenerator) -> void:
         var heat := Color(1.0, rng.randf_range(0.25, 0.55), 0.05)
         _part("sphere", Vector3(rng.randf_range(-0.9, 0.9), sz * 0.3, rng.randf_range(-0.9, 0.9)), Vector3(sz, sz * 0.6, sz), Vector3.ZERO, heat)
 
-# Палаюче дерево: почорнілий стовбур із полум'ям у кроні.
-func _p_burning_tree(x: float, z: float, rng: RandomNumberGenerator) -> void:
-    _begin(x, z, rng.randf() * TAU)
-    var h := rng.randf_range(2.6, 3.8)
-    var char_c := _jit(Color(0.08, 0.06, 0.05), 0.02, rng)
-    _part("cyl", Vector3(0, h * 0.5, 0), Vector3(0.45, h, 0.45), Vector3.ZERO, char_c)
-    for i in range(3):
-        var side := -1.0
-        if i % 2 == 1:
-            side = 1.0
-        _part("cyl", Vector3(side * 0.4, h * (0.55 + 0.12 * float(i)), 0), Vector3(0.14, 1.2, 0.14), Vector3(0, 0, -side * 50.0), char_c)
-    _part("cone", Vector3(0, h + 0.5, 0), Vector3(1.4, 2.0, 1.4), Vector3.ZERO, Color(1.0, 0.36, 0.05))
-    _part("cone", Vector3(0, h + 0.3, 0), Vector3(0.8, 1.3, 0.8), Vector3.ZERO, Color(1.0, 0.72, 0.18))
-    _part("cone", Vector3(0.7, h * 0.7, 0.2), Vector3(0.6, 1.0, 0.6), Vector3.ZERO, Color(1.0, 0.45, 0.08))
-    _col_cyl(Vector3.ZERO, 0.35, 3.0)
-    _fire_light(x, z, h + 0.6)
-
 # Обвуглена колода з жариною на зламі.
 func _p_charred_log(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _begin(x, z, rng.randf() * PI)
@@ -1899,41 +3393,6 @@ func _p_burnt_beams(x: float, z: float, rng: RandomNumberGenerator) -> void:
     _part("cyl", Vector3(0, 0.03, 0), Vector3(2.2, 0.04, 2.2), Vector3.ZERO, Color(0.14, 0.05, 0.03))
     _part("sphere", Vector3(0.3, 0.15, 0.2), Vector3(0.3, 0.2, 0.3), Vector3.ZERO, Color(1.0, 0.4, 0.08))
     _col_cyl(Vector3.ZERO, 0.9, 1.5)
-
-func _p_ruined_building(x: float, z: float, rng: RandomNumberGenerator) -> void:
-    _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
-    var c := _jit(Color(0.3, 0.22, 0.19), 0.04, rng)
-    var w := rng.randf_range(8.0, 11.0)
-    var d := rng.randf_range(6.0, 8.0)
-    _part("box", Vector3(0, 0.05, 0), Vector3(w, 0.1, d), Vector3.ZERO, Color(0.14, 0.13, 0.13))
-    _wall_line(-w * 0.5, -d * 0.5, w * 0.5, -d * 0.5, rng, 3.0, 7.0, c, 2, 2)
-    _wall_line(-w * 0.5, d * 0.5, w * 0.5, d * 0.5, rng, 2.5, 6.0, c, 3, 2)   # задній пролом
-    _wall_line(-w * 0.5, -d * 0.5, -w * 0.5, d * 0.5, rng, 2.0, 6.5, c)
-    _wall_line(w * 0.5, -d * 0.5, w * 0.5, d * 0.5, rng, 1.0, 5.0, c, 1, 2)
-    _part("box", Vector3(1.0, 2.2, 0.5), Vector3(3.5, 0.25, 2.5), Vector3(0, 10, 18), Color(0.28, 0.27, 0.27))
-    for i in range(6):
-        var s := rng.randf_range(0.2, 0.5)
-        _part("box", Vector3(rng.randf_range(-w * 0.4, w * 0.4), s * 0.4, rng.randf_range(-d * 0.4, d * 0.4)), Vector3(s, s * 0.7, s), Vector3(0, rng.randf() * 180.0, 0), _stone(rng))
-
-func _p_crack(x: float, z: float, rng: RandomNumberGenerator) -> void:
-    _begin(x, z, rng.randf() * TAU)
-    for i in range(3):
-        _part("box", Vector3(rng.randf_range(-1.0, 1.0), 0.015, rng.randf_range(-1.0, 1.0)), Vector3(rng.randf_range(1.0, 3.5), 0.02, 0.06), Vector3(0, rng.randf() * 180.0, 0), Color(0.04, 0.04, 0.045))
-
-func _p_road_mark(x: float, z: float, rng: RandomNumberGenerator) -> void:
-    _begin(x, z, float(rng.randi_range(0, 3)) * PI * 0.5)
-    for i in range(4):
-        _part("box", Vector3(-3.0 + 2.0 * float(i), 0.02, 0), Vector3(1.0, 0.02, 0.16), Vector3.ZERO, Color(0.55, 0.5, 0.2))
-
-func _p_manhole(x: float, z: float, rng: RandomNumberGenerator) -> void:
-    _begin(x, z, 0.0)
-    _part("cyl", Vector3(0, 0.02, 0), Vector3(0.9, 0.03, 0.9), Vector3.ZERO, Color(0.07, 0.07, 0.08))
-
-func _p_sign(x: float, z: float, rng: RandomNumberGenerator) -> void:
-    _begin(x, z, rng.randf() * TAU)
-    _part("cyl", Vector3(0, 1.2, 0), Vector3(0.08, 2.4, 0.08), Vector3.ZERO, Color(0.2, 0.2, 0.22))
-    _part("box", Vector3(0, 2.3, 0), Vector3(0.8, 0.8, 0.05), Vector3(0, 0, rng.randf_range(-15, 15)), Color(0.5, 0.1, 0.08))
-    _col_cyl(Vector3.ZERO, 0.15, 2.4)
 
 # ---------- Стежка від воріт, розвилка й пам'ятні місця ----------
 # Головна стежка йде від воріт замку на північ (-Z) до розвилки, звідти — продовження вглиб карти
