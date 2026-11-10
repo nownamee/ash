@@ -8,6 +8,36 @@ const BlueFire = preload("res://blue_fire.gd")
 static func _b(h: Node3D, size: Vector3, color: Color, pos: Vector3, rot: Vector3 = Vector3.ZERO, rough: float = 0.6, emit: float = 0.0) -> void:
     Util.add_mesh(h, Util.box(size), color, pos, rot, rough, emit)
 
+# Циліндр уздовж Z: fr — радіус переднього (−Z) кінця, br — заднього; zc — центр, y/x — зсув.
+static func _cz(h: Node3D, fr: float, br: float, len: float, color: Color, zc: float, rough: float = 0.5, emit: float = 0.0, y: float = 0.0, x: float = 0.0) -> void:
+    var c := CylinderMesh.new()
+    c.top_radius = fr
+    c.bottom_radius = br
+    c.height = len
+    c.radial_segments = 20
+    c.rings = 1
+    Util.add_mesh(h, c, color, Vector3(x, y, zc), Vector3(-90, 0, 0), rough, emit)
+
+static func _sp(h: Node3D, r: float, color: Color, pos: Vector3, scl: Vector3 = Vector3.ONE, rough: float = 0.4, emit: float = 0.0) -> void:
+    var s := SphereMesh.new()
+    s.radius = r
+    s.height = r * 2.0
+    s.radial_segments = 24
+    s.rings = 12
+    var mi := Util.add_mesh(h, s, color, pos, Vector3.ZERO, rough, emit)
+    mi.scale = scl
+
+# Двосхила гостра полоса меча: центральне ребро + зужений кінчик (вістря на −Z).
+static func _blade(h: Node3D, width: float, z0: float, z1: float, color: Color, rib: Color) -> void:
+    var len := absf(z1 - z0)
+    var body := len * 0.84
+    var zb := z0 - body * 0.5
+    _b(h, Vector3(width, 0.035, body), color, Vector3(0, 0, zb), Vector3.ZERO, 0.25)
+    _b(h, Vector3(width * 0.28, 0.05, body), rib, Vector3(0, 0, zb), Vector3.ZERO, 0.3)
+    var tip := PrismMesh.new()
+    tip.size = Vector3(width, len * 0.16, 0.035)
+    Util.add_mesh(h, tip, color, Vector3(0, 0, z0 - body - len * 0.08), Vector3(-90, 0, 0), 0.25)
+
 static func build(h: Node3D, id: String) -> void:
     var steel := Color(0.85, 0.87, 0.93)
     var wood := Color(0.35, 0.22, 0.1)

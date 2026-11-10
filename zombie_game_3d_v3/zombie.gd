@@ -43,6 +43,13 @@ var dash_cd := 2.0
 var dash_t := 0.0
 var dash_dir := Vector3.ZERO
 var knock := Vector3.ZERO
+var stun_t := 0.0          # залишок «оглушення» після сильного удару (рух і атака уповільнені)
+var hop_y := 0.0           # підскок від сильного удару / відльоту трупа, м
+var hop_vy := 0.0
+var _mass := 1.0
+var _last_dir := Vector3.ZERO
+var _last_impulse := 0.0
+var _corpse_vel := Vector3.ZERO
 var flash := 0.0
 var flashing := false
 var dying := false
@@ -80,6 +87,13 @@ var _saved_mask := 7
 const STEER_LOOK := 3.4        # на скільки метрів уперед зомбі дивиться на перешкоди
 const STEER_ANGLES := [0.0, 0.45, 0.9, 1.35, 1.8, 2.4]   # відхилення від прямого шляху (рад.), від малого до великого
 const GRID_CELL := 2.0
+const KNOCK_FRICTION := 7.0     # експоненційне гальмування відкидання, 1/с
+const KNOCK_MIN_DRAG := 2.5     # додаткове лінійне гальмування, м/с²
+const KNOCK_BOUNCE := 0.3       # частка швидкості, що повертається від перешкоди
+const KNOCK_MAX := 14.0
+const HOP_GRAVITY := 26.0
+const STUN_THRESHOLD := 6.0     # імпульс відкидання, від якого зомбі спотикається
+const CORPSE_FRICTION := 4.5
 const COL_R_MAX := 0.8         # колізійний радіус не більший за цей: великі боси теж пролазять між об'єктами
 static var _grid: Dictionary = {}
 static var _grid_frame := -1
@@ -146,6 +160,7 @@ func setup(k: String, wave: int, tier: int) -> void:
         # перший стрибок не одразу і в різний час, щоб жирні не стрибали хором
         jump_cd = randf_range(4.0, float(jump_cfg["cd"]))
     bar_w = maxf(1.0, size * 0.8)
+    _mass = pow(maxf(size, 0.6), 1.5) * (1.0 + resist)
 
 func _ready() -> void:
     motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
@@ -252,8 +267,13 @@ func _set_flash(on: bool) -> void:
 func _physics_process(delta: float) -> void:
     if burning:
         _burn_step(delta)
-    if dying or target == null or not is_instance_valid(target):
+    if dying:
+        _corpse_step(delta)
         return
+    if target == null or not is_instance_valid(target):
+        return
+    _hop_step(delta)
+    stun_t = maxf(0.0, stun_t - delta)
     if idle:
         _idle_tick(delta)
         return
@@ -278,6 +298,8 @@ func _physics_process(delta: float) -> void:
         frozen_t -= delta
         knock = Vector3.ZERO
         velocity = Vector3.ZERO
+        hop_y = 0.0
+        hop_vy = 0.0
         if frozen_t <= 0.0:
             _thaw()
         return
@@ -346,10 +368,17 @@ func _physics_process(delta: float) -> void:
     if ai != "ranged" and dist > reach + 1.0 and move_dir.length_squared() > 0.04:
         visual.rotation.y = lerp_angle(visual.rotation.y, atan2(-move_dir.x, -move_dir.z), minf(1.0, delta * 10.0))
 
+    if stun_t > 0.0:
+        spd *= 0.2
     velocity = move_dir * spd + knock
     velocity.y = 0.0
-    knock = knock.move_toward(Vector3.ZERO, 28.0 * delta)
+    var kl := knock.length()
+    if kl > 0.01:
+        kl = maxf(0.0, kl * exp(-KNOCK_FRICTION * delta) - KNOCK_MIN_DRAG * delta)
+        knock = knock.normalized() * kl if kl > 0.05 else Vector3.ZERO
     move_and_slide()
+    if knock != Vector3.ZERO:
+        _knock_bounce()
 
     var moving := Vector2(velocity.x, velocity.z).length()
     walk_t += delta * moving * 3.0
@@ -368,7 +397,7 @@ func _physics_process(delta: float) -> void:
         _animate(_anim_acc, moving)
         _anim_acc = 0.0
 
-    if dist <= reach + 0.5 and atk_cd <= 0.0:
+    if dist <= reach + 0.5 and atk_cd <= 0.0 and stun_t <= 0.0:
         atk_cd = 1.0
         atk_anim = 0.4
         cur_target.take_damage(damage, slow_secs)
@@ -479,7 +508,9 @@ func _check_stuck(dist: float) -> void:
 # Зомбі злегка розштовхуються, щоб не збиватися в купу й не блокувати один одного в проходах.
 func _with_separation(md: Vector3) -> Vector3:
     if (_frame_n + _anim_off) % 2 == 0:
-        _sep = _calc_sep()
+        _sep = _sep.lerp(_calc_sep(), 0.6)
+        if _sep.length_squared() < 0.0004:
+            _sep = Vector3.ZERO
     if _sep == Vector3.ZERO:
         return md
     var r := md + _sep * 0.9
@@ -515,7 +546,8 @@ func _calc_sep() -> Vector3:
                 var d := off.length()
                 var rr: float = _col_r + float(o._col_r) + 0.5
                 if d > 0.001 and d < rr:
-                    push += off / d * (1.0 - d / rr)
+                    var share: float = clampf(2.0 * float(o._mass) / (_mass + float(o._mass)), 0.3, 1.7)
+                    push += off / d * (1.0 - d / rr) * share
                 elif d <= 0.001:
                     push += Vector3(randf_range(-1.0, 1.0), 0.0, randf_range(-1.0, 1.0)).normalized() * 0.5
     if push.length() > 1.0:
@@ -814,6 +846,60 @@ func apply_slow(secs: float, mult: float) -> void:
     slowed_t = maxf(slowed_t, secs)
     slowed_mult = minf(slowed_mult, mult) if was else mult
 
+# Підскок від сильного удару: проста балістика, лише поза стрибком.
+func _hop_step(delta: float) -> void:
+    if hop_vy == 0.0 and hop_y <= 0.0:
+        return
+    if _jump_state != "":
+        hop_y = 0.0
+        hop_vy = 0.0
+        return
+    hop_vy -= HOP_GRAVITY * delta
+    hop_y += hop_vy * delta
+    if hop_y <= 0.0:
+        hop_y = 0.0
+        hop_vy = 0.0
+    global_position.y = hop_y
+
+# Відкидання відбивається від перешкод (шар 4), а не тисне в них.
+func _knock_bounce() -> void:
+    for i in range(get_slide_collision_count()):
+        var c := get_slide_collision(i)
+        var n := c.get_normal()
+        n.y = 0.0
+        if n.length_squared() < 0.01:
+            continue
+        n = n.normalized()
+        var vn := knock.dot(n)
+        if vn < 0.0 and c.get_collider() is StaticBody3D:
+            knock -= (1.0 + KNOCK_BOUNCE) * vn * n
+
+# Політ трупа після смерті: відлітає вздовж удару, гальмується, не проходить крізь перешкоди.
+func _corpse_step(delta: float) -> void:
+    if _corpse_vel == Vector3.ZERO and hop_y <= 0.0 and hop_vy == 0.0:
+        return
+    if _corpse_vel != Vector3.ZERO:
+        var sp := maxf(0.0, _corpse_vel.length() * exp(-CORPSE_FRICTION * delta) - 1.0 * delta)
+        _corpse_vel = _corpse_vel.normalized() * sp if sp > 0.1 else Vector3.ZERO
+        velocity = _corpse_vel
+        move_and_slide()
+        for i in range(get_slide_collision_count()):
+            var n := get_slide_collision(i).get_normal()
+            n.y = 0.0
+            if n.length_squared() > 0.01:
+                n = n.normalized()
+                var vn := _corpse_vel.dot(n)
+                if vn < 0.0:
+                    _corpse_vel -= 1.25 * vn * n
+    if hop_vy != 0.0 or hop_y > 0.0:
+        hop_vy -= HOP_GRAVITY * delta
+        hop_y += hop_vy * delta
+        if hop_y <= 0.0:
+            hop_y = 0.0
+            hop_vy = 0.0
+            _corpse_vel *= 0.6      # приземлення гасить частину швидкості
+        global_position.y = hop_y
+
 func take_damage(amount: float, dir: Vector3, knock_power: float = 8.0, crit: bool = false, weapon: String = "") -> void:
     if dying:
         return
@@ -824,7 +910,19 @@ func take_damage(amount: float, dir: Vector3, knock_power: float = 8.0, crit: bo
     hp -= amount
     flash = 0.1
     _set_flash(true)
-    knock += dir.normalized() * knock_power * (1.0 - resist)
+    var impulse := knock_power * (1.0 - resist) / sqrt(maxf(size, 0.7))
+    var ndir := dir
+    ndir.y = 0.0
+    ndir = ndir.normalized() if ndir.length() > 0.001 else Vector3.ZERO
+    knock += ndir * impulse
+    if knock.length() > KNOCK_MAX:
+        knock = knock.normalized() * KNOCK_MAX
+    _last_dir = ndir
+    _last_impulse = impulse
+    if impulse >= STUN_THRESHOLD:
+        stun_t = maxf(stun_t, minf(0.4, 0.04 * impulse))
+        if _jump_state == "" and hop_y <= 0.001:
+            hop_vy = minf(5.5, 1.2 + 0.35 * impulse)
     var col := Color(1.0, 0.9, 0.3)
     if crit:
         col = Color(1.0, 0.4, 0.1)
@@ -857,7 +955,14 @@ func _die() -> void:
         visual.scale = Vector3.ONE * size
     remove_from_group("zombies")
     collision_layer = 0
-    collision_mask = 0
+    collision_mask = 0 if ghost else 4
+    var fling := knock + _last_dir * (2.0 + _last_impulse * 0.5)
+    if fling.length() > 10.0:
+        fling = fling.normalized() * 10.0
+    _corpse_vel = fling
+    knock = Vector3.ZERO
+    hop_y = 0.0
+    hop_vy = clampf(1.5 + _last_impulse * 0.3, 0.0, 4.5) if _last_impulse > 2.0 else 0.0
     bar_bg.visible = false
     bar_fg.visible = false
     var bone := bool(data["look"].get("bare", false))
@@ -901,8 +1006,11 @@ func _die() -> void:
         cmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
     var tw := create_tween()
     tw.set_parallel(true)
-    var fall_dir := 1.0
-    if randf() < 0.5:
+    var fall_dir := 1.0       # +1: падає назад (навзнак), -1: уперед
+    if _last_dir != Vector3.ZERO:
+        var fwd := Vector3(-sin(visual.rotation.y), 0.0, -cos(visual.rotation.y))
+        fall_dir = 1.0 if fwd.dot(_last_dir) < 0.0 else -1.0
+    elif randf() < 0.5:
         fall_dir = -1.0
     if is_crawler:
         tw.tween_property(visual, "position:y", 0.05 * size, 0.2)
