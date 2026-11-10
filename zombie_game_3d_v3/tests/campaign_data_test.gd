@@ -21,7 +21,7 @@ func _run() -> void:
 	_check(baseline.size() == LEGACY_LOCATION_COUNT and Locations.DATA.size() >= LEGACY_LOCATION_COUNT, "legacy prefix is available")
 	if baseline.size() == LEGACY_LOCATION_COUNT and Locations.DATA.size() >= LEGACY_LOCATION_COUNT:
 		for i in range(LEGACY_LOCATION_COUNT):
-			_check(Locations.DATA[i] == baseline[i], "loc%d matches its full 96.zip record" % (i + 1))
+			_check(_without_text(Locations.DATA[i]) == _without_text(baseline[i]), "loc%d matches its 96.zip record except player-facing text" % (i + 1))
 
 	_test_ids_and_campaigns()
 	_test_biomes_bosses_and_pools()
@@ -35,6 +35,21 @@ func _run() -> void:
 	else:
 		printerr("FAIL: %d of %d campaign data checks failed" % [failures, checks])
 		quit(1)
+
+func _without_text(value: Variant) -> Variant:
+	if value is Dictionary:
+		var out := {}
+		for key in value:
+			if key == "name" or key == "desc" or key == "msg":
+				continue
+			out[key] = _without_text(value[key])
+		return out
+	if value is Array:
+		var items := []
+		for item in value:
+			items.append(_without_text(item))
+		return items
+	return value
 
 func _load_baseline_locations() -> Array:
 	var zip := ZIPReader.new()

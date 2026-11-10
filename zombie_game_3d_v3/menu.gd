@@ -145,7 +145,7 @@ func _ready() -> void:
     pages["skills"] = _build_skills_page(holder)
 
     back_button = Button.new()
-    back_button.text = "« До карти"
+    back_button.text = "« До мапи"
     back_button.position = Vector2(14, 4)
     back_button.size = Vector2(190, 36)
     back_button.pressed.connect(_show_tab.bind("map"))
@@ -177,9 +177,9 @@ func _exit_tree() -> void:
 func _process(_delta: float) -> void:
     if music_button != null:
         if Sfx.music_on:
-            music_button.text = "Музика: так"
+            music_button.text = "Музика: лунає"
         else:
-            music_button.text = "Музика: ні"
+            music_button.text = "Музика: змовкла"
 
 func _toggle_music() -> void:
     Sfx.toggle_music()
@@ -327,7 +327,7 @@ func _build_map_page(holder: Control) -> Control:
     hint_panel.add_child(hint_row)
     hint_row.add_child(_icon("res://icons/ui_pin.png", 26.0))
     var hint := Label.new()
-    hint.text = "Торкнись будь-якої точки на карті — і дізнаєшся, що на тебе чекає."
+    hint.text = "Торкнись будь-якого вогнища на мапі — і відкриється, що чигає на тебе."
     hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     hint.add_theme_font_size_override("font_size", 16)
@@ -385,7 +385,7 @@ func _build_map_page(holder: Control) -> Control:
     reset_button.icon = load("res://icons/ui_trash.png")
     reset_button.expand_icon = true
     reset_button.add_theme_constant_override("icon_max_width", 22)
-    reset_button.text = "Скинути прогрес"
+    reset_button.text = "Спалити літопис"
     reset_button.pressed.connect(_on_reset)
     box.add_child(reset_button)
     return page
@@ -463,13 +463,13 @@ func _show_briefing(brief: Dictionary) -> void:
     row.add_theme_constant_override("separation", 12)
     vb.add_child(row)
     var back := Button.new()
-    back.text = "Ще не готовий"
+    back.text = "Ще не час"
     back.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     back.custom_minimum_size = Vector2(0, 48)
     back.pressed.connect(shade.queue_free)
     row.add_child(back)
     var go := Button.new()
-    go.text = "До бою!"
+    go.text = "ДО ЗБРОЇ!"
     go.theme_type_variation = "PlayButton"
     go.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     go.custom_minimum_size = Vector2(0, 48)
@@ -479,7 +479,7 @@ func _show_briefing(brief: Dictionary) -> void:
 func _on_reset() -> void:
     if not reset_armed:
         reset_armed = true
-        reset_button.text = "Точно скинути? Натисніть ще раз"
+        reset_button.text = "Спалити? Торкни ще раз"
         return
     reset_armed = false
     GameState.reset_progress()
@@ -524,7 +524,7 @@ func _difficulty_row(tier: int, red: int = 0) -> void:
     var ic := _icon("res://icons/ui_damage.png", 28.0)
     row.add_child(ic)
     var lb := Label.new()
-    lb.text = "Складність"
+    lb.text = "Лютість"
     lb.theme_type_variation = "DarkTitle"                  # загроза — зловісним шрифтом
     lb.add_theme_font_size_override("font_size", 20)
     lb.add_theme_color_override("font_color", Color(1.0, 0.18, 0.12) if red > 0 else Color(0.92, 0.45, 0.35))
@@ -545,15 +545,15 @@ func _difficulty_row(tier: int, red: int = 0) -> void:
 func _refresh_info() -> void:
     info_panel.visible = (sel_id != "")
     hint_panel.visible = (sel_id == "")
-    reset_button.text = "Скинути прогрес"
+    reset_button.text = "Спалити літопис"
     if reset_armed:
-        reset_button.text = "Точно скинути? Натисніть ще раз"
+        reset_button.text = "Спалити? Торкни ще раз"
     _clear_rows()
     if sel_id == "":
-        info_name.text = "Оберіть локацію на карті"
+        info_name.text = "Оберіть землі на мапі"
         info_icon.texture = load("res://icons/ui_map.png")
-        _info_row("res://icons/ui_skull.png", "Чим далі ви йдете, тим важчі зомбі та хвилі.")
-        _info_row("res://icons/ui_tab_weapons.png", "Зброя, броня й навики купуються тут, у меню.")
+        _info_row("res://icons/ui_skull.png", "Що глибше в пітьму, то лютіші мерці та хвилі.")
+        _info_row("res://icons/ui_tab_weapons.png", "Клинки, лати й уміння здобуваються тут, у кузні та на подвір’ї.")
         play_button.text = "—"
         play_button.icon = null
         play_button.disabled = true
@@ -573,39 +573,39 @@ func _refresh_info() -> void:
     var bio := String(Biomes.DATA[int(loc["biome"])]["name"])
     if int(loc["second"]) >= 0:
         bio += " + " + String(Biomes.DATA[int(loc["second"])]["name"])
-    _info_row("res://icons/%s" % String(BIOME_ICONS[int(loc["biome"])]), "Біом: " + bio)
+    _info_row("res://icons/%s" % String(BIOME_ICONS[int(loc["biome"])]), "Край: " + bio)
     if loc.has("campaign"):
         var campaign_brief := Locations.briefing(loc)
         _info_row("res://icons/ui_map.png", "%s · стадія %d/5" % [String(campaign_brief.get("who", "Кампанія")), int(loc.get("stage", 1))], Color(0.72, 0.82, 0.84))
     var red_n := Locations.red_skulls(loc)
     _difficulty_row(int(loc["tier"]), red_n)
     if red_n > 0:
-        _info_row("res://icons/ui_skull.png", "Кривава складність %d/10: здоров'я зомбі ×%.2f." % [red_n, Locations.red_hp_mult(loc)], Color(1.0, 0.25, 0.2), Color(1.0, 0.1, 0.06, 1.0))
+        _info_row("res://icons/ui_skull.png", "Кривава лють %d/10: живучість мерців ×%.2f." % [red_n, Locations.red_hp_mult(loc)], Color(1.0, 0.25, 0.2), Color(1.0, 0.1, 0.06, 1.0))
     if bool(loc.get("wip", false)):
         info_rows.add_child(HSeparator.new())
-        _info_row("res://icons/ui_lock.png", "Ці землі ще тонуть у диму. Скоро вони відкриються.", Color(1.0, 0.70, 0.60))
+        _info_row("res://icons/ui_lock.png", "Ці землі ще тонуть у диму. Невдовзі шлях туди відкриється.", Color(1.0, 0.70, 0.60))
         play_button.disabled = true
         play_button.icon = load("res://icons/ui_lock.png")
-        play_button.text = "СКОРО"
+        play_button.text = "ЗГОДОМ"
         return
     if bool(loc.get("burning", false)):
-        _info_row("res://icons/ui_flag.png", "ОБОРОНА ПАЛАЮЧОГО ЗАМКУ: замок горить і сам втрачає здоров'я щосекунди, а зомбі б'ють по ньому дужче. Відбий орду якнайшвидше, поки він не згорів.", Color(1.0, 0.55, 0.3))
-        _info_row("res://icons/ui_pin.png", "Навколо повно вогню: він пече лише тебе (20% HP за опік). Мерцям він байдужий.", Color(1.0, 0.62, 0.3))
+        _info_row("res://icons/ui_flag.png", "ОБОРОНА ПАЛАЮЧОЇ ТВЕРДИНІ: замок палає й щосекунди втрачає міць, а мертві б’ють по ньому лютіше. Розбий орду, доки він не обернувся на попіл.", Color(1.0, 0.55, 0.3))
+        _info_row("res://icons/ui_pin.png", "Довкола лютує вогонь: він пече лише тебе (20% HP за опік). Мертві його не бояться.", Color(1.0, 0.62, 0.3))
     elif bool(loc.get("defend", false)):
-        _info_row("res://icons/ui_flag.png", "ОБОРОНА: на мури суне одна нескінченна орда. Не пусти її всередину: впаде замок, і все втрачено.", Color(1.0, 0.62, 0.52))
+        _info_row("res://icons/ui_flag.png", "ОБОРОНА: на мури суне одна нескінченна орда. Не впусти її: впаде замок — і все втрачено.", Color(1.0, 0.62, 0.52))
     elif bool(loc.get("escort", false)):
-        _info_row("res://icons/ui_flag.png", "ПОРЯТУНОК: прорвися крізь натовпи, знайди пораненого лицаря й живим доведи до воріт замку.", Color(1.0, 0.85, 0.4))
+        _info_row("res://icons/ui_flag.png", "ПОРЯТУНОК: проби собі шлях крізь натовпи, відшукай пораненого лицаря й живим доведи до воріт замку.", Color(1.0, 0.85, 0.4))
     elif bool(loc.get("clear", false)):
-        _info_row("res://icons/ui_flag.png", "ЗАЧИСТКА: хвиль не буде. %d мерців завмерли по всій окрузі, тож підкрадайся тихо: вони прокидаються, щойно підійдеш надто близько." % int(loc["clear_count"]), Color(1.0, 0.85, 0.4))
+        _info_row("res://icons/ui_flag.png", "ЗАЧИСТКА: хвиль не буде. %d мерців завмерли по всій окрузі; підступай тихо — вони прокидаються, щойно ступиш надто близько." % int(loc["clear_count"]), Color(1.0, 0.85, 0.4))
     elif bool(loc.get("horde", false)):
-        _info_row("res://icons/ui_flag.png", "ОРДА: одна гігантська хвиля, що вартує трьох звичайних. Перепочинку не буде.", Color(1.0, 0.62, 0.52))
+        _info_row("res://icons/ui_flag.png", "ОРДА: одна велетенська хвиля, що вартує трьох звичайних. Перепочинку не буде.", Color(1.0, 0.62, 0.52))
     else:
-        _info_row("res://icons/ui_flag.png", "Хвиль до фіналу: %d" % int(loc["waves"]))
+        _info_row("res://icons/ui_flag.png", "Хвиль до розв’язки: %d" % int(loc["waves"]))
         if loc.has("wave_plan"):
             if int(loc["waves"]) >= 5:
-                _info_row("res://icons/ui_skull.png", "Мерці тут лютіші, ніж деінде, а остання хвиля — справжня різанина: разом вийде кілька грізних почвар.", Color(1.0, 0.45, 0.4))
+                _info_row("res://icons/ui_skull.png", "Мерці тут лютіші, ніж деінде, а остання хвиля — справжня різанина: кілька грізних почвар вийдуть разом.", Color(1.0, 0.45, 0.4))
             else:
-                _info_row("res://icons/ui_skull.png", "Мерців тут більше, вони витриваліші й проворніші. Розслаблятися не вийде.", Color(1.0, 0.62, 0.52))
+                _info_row("res://icons/ui_skull.png", "Мерців тут більше, вони живучіші й прудкіші. Про спокій забудь.", Color(1.0, 0.62, 0.52))
     _info_row("res://icons/ui_skull.png", "Ватажок: %s" % String(ZombieTypes.DATA[String(loc["boss"])]["name"]), Color(1.0, 0.62, 0.52))
     var names := PackedStringArray()
     for b in [int(loc["biome"]), int(loc["second"])]:
@@ -617,7 +617,7 @@ func _refresh_info() -> void:
             var zn := String(ZombieTypes.DATA[String(e[0])]["name"])
             if not names.has(zn):
                 names.append(zn)
-    _info_row("res://icons/ui_tab_bestiary.png", "Що тут блукає: простий зомбі, " + ", ".join(names))
+    _info_row("res://icons/ui_tab_bestiary.png", "Хто тут блукає: простий мрець, " + ", ".join(names))
     if int(loc["biome"]) == 8 or int(loc["second"]) == 8:
         _info_row("res://icons/ui_pin.png", "Під ногами кислотні калюжі: вони роз'їдають і сповільнюють лише тебе. Мерцям вони байдужі, тож заманюй їх у кислоту.", Color(0.6, 1.0, 0.4))
     _info_row("res://icons/ui_pin.png", "Чим жорсткіша бійня, тим раніше з'являються жиробаси. Готуйся до важких гостей.", Color(0.78, 0.72, 0.60))
@@ -635,13 +635,13 @@ func _refresh_info() -> void:
         play_button.disabled = false
         play_button.icon = load("res://icons/ui_play.png")
         if done:
-            play_button.text = "ПРОЙТИ ЗНОВУ"
+            play_button.text = "ЗНОВУ В ПОХІД"
         else:
-            play_button.text = "У БІЙ!"
+            play_button.text = "ДО ЗБРОЇ!"
     else:
         play_button.disabled = true
         play_button.icon = load("res://icons/ui_lock.png")
-        play_button.text = "ЗАКРИТО"
+        play_button.text = "ШЛЯХ ЗАКРИТО"
 
 # ================= Зброя =================
 # Ліворуч — стійка з порожніми комірками (по одній на кожну зброю). Праворуч — «Відкриття зброї»:
@@ -714,7 +714,7 @@ func _build_weapons_page(holder: Control) -> Control:
     cols.add_child(left)
 
     var hint := Label.new()
-    hint.text = "Торкнись зброї, щоб роздивитись її уважніше. Кнопка «+» — швидка купівля й прокачка."
+    hint.text = "Торкнись зброї, щоб роздивитись її уважніше. Кнопка «+» — швидке здобуття й загартування."
     hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     hint.add_theme_font_size_override("font_size", 15)
     hint.add_theme_color_override("font_color", Color(1.0, 0.9, 0.4))
@@ -955,7 +955,7 @@ func _build_unlock_panel() -> Control:
     pn.add_child(v)
 
     var title := Label.new()
-    title.text = "Відкриття зброї"
+    title.text = "Відкриті клинки"
     title.theme_type_variation = "TitleLabel"
     title.add_theme_font_size_override("font_size", 24)
     title.add_theme_color_override("font_color", Color(1.0, 0.85, 0.35))
@@ -963,7 +963,7 @@ func _build_unlock_panel() -> Control:
     title.add_theme_constant_override("outline_size", 5)
     v.add_child(title)
     var sub := Label.new()
-    sub.text = "Здобудь перемогу на локації й торкнись сяючої іконки: зброя сама стрибне у свою комірку."
+    sub.text = "Здобудь звитягу в землях і торкнись сяючого знака: клинок сам скочить у свою комірку."
     sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     sub.add_theme_font_size_override("font_size", 14)
     sub.add_theme_color_override("font_color", Color(0.85, 0.78, 0.6))
@@ -981,7 +981,7 @@ func _build_unlock_panel() -> Control:
     unlock_icons = {}
     unlock_rows = []
     # перший рядок — зброя, доступна з початку; далі — за локаціями у порядку карти
-    var groups: Array = [{"loc": "", "name": "З початку гри"}]
+    var groups: Array = [{"loc": "", "name": "З початку літопису"}]
     for loc in Locations.DATA:
         groups.append({"loc": String(loc["id"]), "name": String(loc["name"])})
     for g in groups:
@@ -1168,7 +1168,7 @@ func _on_weapon_loadout(id: String) -> void:
 
 # ---------- оновлення вигляду ----------
 func _refresh_weapons() -> void:
-    loadout_label.text = "Набір у бій: %d/%d  (клавіші 1-5 у бою)" % [GameState.loadout.size(), GameState.MAX_LOADOUT]
+    loadout_label.text = "Спорядження: %d/%d  (клавіші 1-5 у битві)" % [GameState.loadout.size(), GameState.MAX_LOADOUT]
 
     # комірки зі зброєю
     for id in Weapons.all_ids():
@@ -1221,7 +1221,7 @@ func _refresh_weapons() -> void:
             slot.tooltip_text = String(w["name"])
         else:
             var ul := Locations.by_id(Weapons.unlock_loc(sid))
-            slot.tooltip_text = "Відкриється після проходження: «%s»" % String(ul["name"])
+            slot.tooltip_text = "Відкриється по звитязі в «%s»" % String(ul["name"])
 
         # кнопка «+» і ціна під нею
         plus.tooltip_text = ""
@@ -1235,17 +1235,17 @@ func _refresh_weapons() -> void:
             cost = int(w["price"])
             show_cost = true
             plus_ok = GameState.coins >= cost
-            plus.tooltip_text = "Купити"
+            plus.tooltip_text = "Здобути"
         elif lvl < Weapons.FINAL_LEVEL:
             var last := lvl >= Weapons.MAX_LEVEL
             plus.icon = load("res://icons/ui_star.png" if last else "res://icons/ui_arrow_up.png")
             cost = Weapons.upgrade_cost(sid, lvl)
             show_cost = true
             plus_ok = GameState.coins >= cost
-            plus.tooltip_text = "ФІНАЛЬНА прокачка: урон ×3 від звичайної" if last else "Прокачати"
+            plus.tooltip_text = "ОСТАННЄ ЗАГАРТУВАННЯ: урон ×3 від звичайного" if last else "Загартувати"
         else:
             plus.icon = load("res://icons/ui_star.png")
-            plus.tooltip_text = "Максимальний рівень"
+            plus.tooltip_text = "Вершина майстерності"
         plus.disabled = not plus_ok
         coin.visible = show_cost
         if show_cost:
@@ -1292,18 +1292,18 @@ func _refresh_weapons() -> void:
         var wname := String(Weapons.DATA[sid]["name"])
         if revealed2:
             ic.modulate = Color(0.55, 0.55, 0.55, 1)
-            btn.tooltip_text = wname + " — уже в комірці (натисни, щоб побачити інформацію)"
+            btn.tooltip_text = wname + " — уже в комірці (торкнись, щоб розглянути)"
             _style_button(btn, _sb(Color(0.10, 0.07, 0.045), Color(0.40, 0.30, 0.14), 2, 8), _sb(Color(0.10, 0.07, 0.045), Color(0.40, 0.30, 0.14), 2, 8))
             btn.disabled = false
         elif is_ready:
             ic.modulate = Color(1, 1, 1, 1)
-            btn.tooltip_text = wname + " — натисни, і зброя вистрибне у свою комірку!"
+            btn.tooltip_text = wname + " — торкнись, і клинок скочить у свою комірку!"
             _style_button(btn, _sb(Color(0.30, 0.20, 0.06), Color(1.0, 0.9, 0.3), 3, 8), _sb(Color(0.30, 0.20, 0.06), Color(1.0, 0.9, 0.3), 3, 8))
             btn.disabled = false
         else:
             ic.modulate = Color(0.25, 0.25, 0.25, 1)
             var ul := Locations.by_id(Weapons.unlock_loc(sid))
-            btn.tooltip_text = "%s — відкриється після проходження: «%s»" % [wname, String(ul["name"])]
+            btn.tooltip_text = "%s — відкриється по звитязі в «%s»" % [wname, String(ul["name"])]
             _style_button(btn, _sb(Color(0.05, 0.035, 0.025), Color(0.25, 0.19, 0.11), 2, 8), _sb(Color(0.05, 0.035, 0.025), Color(0.25, 0.19, 0.11), 2, 8))
             btn.disabled = true
         _set_pulse(sid, is_ready)
@@ -1365,7 +1365,7 @@ func _weapon_stats(id: String, lvl: int) -> Array:
     var cd_n := ""
     if has_next:
         cd_n = "%.2f с" % Weapons.cooldown(id, n)
-    out.append(_stat("res://icons/ui_cooldown.png", "Перезарядка", cd_c, cd_n))
+    out.append(_stat("res://icons/ui_cooldown.png", "Відновлення", cd_c, cd_n))
 
     var dps_c := "%d" % int(Weapons.damage(id, lvl) * mm * float(cnt) / Weapons.cooldown(id, lvl))
     var dps_n := ""
@@ -1377,7 +1377,7 @@ func _weapon_stats(id: String, lvl: int) -> Array:
         var r_n := ""
         if has_next:
             r_n = "%.1f м" % Weapons.range_of(id, n)
-        out.append(_stat("res://icons/ui_range.png", "Дальність", "%.1f м" % Weapons.range_of(id, lvl), r_n))
+        out.append(_stat("res://icons/ui_range.png", "Влучність", "%.1f м" % Weapons.range_of(id, lvl), r_n))
     if type_s == "proj":
         var p_n := ""
         if has_next:
@@ -1489,7 +1489,7 @@ func _fill_weapon_popup() -> void:
     elif owned:
         lvl_l.text = "  Рівень %d/%d" % [lvl, Weapons.MAX_LEVEL]
     else:
-        lvl_l.text = "  Ще не куплено"
+        lvl_l.text = "  Ще не здобуто"
     lvl_l.add_theme_font_size_override("font_size", 15)
     lvl_l.add_theme_color_override("font_color", Color(0.85, 0.78, 0.6))
     srow.add_child(lvl_l)
@@ -1601,19 +1601,19 @@ func _fill_weapon_popup() -> void:
     popup_box.add_child(brow)
     if not owned:
         var price := int(w["price"])
-        var bb := _popup_button("Купити (%d)" % price, "res://icons/ui_coin.png")
+        var bb := _popup_button("Здобути (%d)" % price, "res://icons/ui_coin.png")
         bb.disabled = GameState.coins < price
         bb.pressed.connect(_on_weapon_buy.bind(id))
         brow.add_child(bb)
     else:
         if lvl >= Weapons.FINAL_LEVEL:
-            var mb := _popup_button("Макс. рівень", "res://icons/ui_star.png")
+            var mb := _popup_button("Вершина", "res://icons/ui_star.png")
             mb.disabled = true
             brow.add_child(mb)
         else:
             var cost := Weapons.upgrade_cost(id, lvl)
             var last := lvl >= Weapons.MAX_LEVEL
-            var ub := _popup_button(("ФІНАЛ (%d)" if last else "Прокачати (%d)") % cost, "res://icons/ui_star.png" if last else "res://icons/ui_arrow_up.png")
+            var ub := _popup_button(("ФІНАЛ (%d)" if last else "Загартувати (%d)") % cost, "res://icons/ui_star.png" if last else "res://icons/ui_arrow_up.png")
             ub.disabled = GameState.coins < cost
             ub.pressed.connect(_on_weapon_upgrade.bind(id))
             brow.add_child(ub)
@@ -1978,13 +1978,13 @@ func _refresh_armor() -> void:
             plus.icon = load("res://icons/ui_lock.png")
             plus.tooltip_text = _armor_lock_text(nt)
             coin.visible = false
-            price.text = "Закрито"
+            price.text = "Замкнено"
             price.add_theme_color_override("font_color", Color(0.75, 0.6, 0.55))
         else:
             var cost := Armor.price(s, nt)
             plus_ok = GameState.coins >= cost
             plus.icon = load("res://icons/ui_plus.png" if tier == 0 else "res://icons/ui_arrow_up.png")
-            plus.tooltip_text = "Купити" if tier == 0 else "Прокачати"
+            plus.tooltip_text = "Здобути" if tier == 0 else "Загартувати"
             coin.visible = true
             price.text = str(cost)
             price.add_theme_color_override("font_color", Color(1.0, 0.88, 0.4) if plus_ok else Color(0.95, 0.45, 0.38))
@@ -2090,7 +2090,7 @@ func _fill_armor_popup() -> void:
             tint = Color(0.28, 0.25, 0.22, 0.9)
         srow.add_child(_icon("res://icons/ui_star.png", 24.0, tint))
     var lvl_l := Label.new()
-    lvl_l.text = ("  Рівень %d/%d" % [tier - first + 1, last - first + 1]) if tier > 0 else "  Ще не куплено"
+    lvl_l.text = ("  Рівень %d/%d" % [tier - first + 1, last - first + 1]) if tier > 0 else "  Ще не здобуто"
     lvl_l.add_theme_font_size_override("font_size", 15)
     lvl_l.add_theme_color_override("font_color", Color(0.85, 0.78, 0.6))
     srow.add_child(lvl_l)
@@ -2123,12 +2123,12 @@ func _fill_armor_popup() -> void:
     armor_popup_box.add_child(stats)
     var next := _armor_next_tier(k)
     var has_next := next != 0
-    stats.add_child(_armor_stat_row("res://icons/ui_shield.png", "Захист", "%d%%" % int(Armor.defense(s, tier) * 100.0), ("%d%%" % int(Armor.defense(s, next) * 100.0)) if has_next else ""))
+    stats.add_child(_armor_stat_row("res://icons/ui_shield.png", "Оборона", "%d%%" % int(Armor.defense(s, tier) * 100.0), ("%d%%" % int(Armor.defense(s, next) * 100.0)) if has_next else ""))
     if s == "boots":
         stats.add_child(_armor_stat_row("res://icons/ui_boot.png", "Швидкість", "+%d%%" % int(float(Armor.BOOTS_SPEED[tier]) * 100.0), ("+%d%%" % int(float(Armor.BOOTS_SPEED[next]) * 100.0)) if has_next else ""))
     if tier > 0 and GameState.armor_best(s) > tier:
         var bt := Label.new()
-        bt.text = "Зараз тебе береже сильніша броня з іншого комплекту."
+        bt.text = "Нині тебе береже міцніша броня з іншого комплекту."
         bt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
         bt.add_theme_font_size_override("font_size", 14)
         bt.add_theme_color_override("font_color", Color(0.75, 0.85, 1.0))
@@ -2160,14 +2160,14 @@ func _fill_armor_popup() -> void:
     brow.alignment = BoxContainer.ALIGNMENT_CENTER
     armor_popup_box.add_child(brow)
     if not has_next:
-        var mb := _popup_button("Макс. рівень", "res://icons/ui_star.png")
+        var mb := _popup_button("Вершина", "res://icons/ui_star.png")
         mb.disabled = true
         brow.add_child(mb)
     else:
         var cost := Armor.price(s, next)
-        var bb := _popup_button(("Купити (%d)" if tier == 0 else "Прокачати (%d)") % cost, "res://icons/ui_coin.png" if tier == 0 else "res://icons/ui_arrow_up.png")
+        var bb := _popup_button(("Здобути (%d)" if tier == 0 else "Загартувати (%d)") % cost, "res://icons/ui_coin.png" if tier == 0 else "res://icons/ui_arrow_up.png")
         if next_locked:
-            bb = _popup_button("Закрито", "res://icons/ui_lock.png")
+            bb = _popup_button("Замкнено", "res://icons/ui_lock.png")
         bb.disabled = next_locked or GameState.coins < cost
         bb.pressed.connect(_on_armor_buy.bind(k))
         brow.add_child(bb)
@@ -2227,7 +2227,7 @@ func _build_skills_page(holder: Control) -> Control:
     cols.add_child(left)
 
     var hint := Label.new()
-    hint.text = "Торкнись навика, щоб дізнатися більше, а «+» — швидка прокачка. Навики діють у кожному бою."
+    hint.text = "Торкнись навика, щоб дізнатися більше, а «+» — швидке загартування. Уміння діють у кожному бою."
     hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     hint.add_theme_font_size_override("font_size", 15)
     hint.add_theme_color_override("font_color", Color(1.0, 0.9, 0.4))
@@ -2343,7 +2343,7 @@ func _build_skills_side_panel() -> Control:
     pn.add_child(v)
 
     var title := Label.new()
-    title.text = "Твої навики"
+    title.text = "Твої уміння"
     title.theme_type_variation = "TitleLabel"
     title.add_theme_font_size_override("font_size", 24)
     title.add_theme_color_override("font_color", Color(1.0, 0.85, 0.35))
@@ -2351,7 +2351,7 @@ func _build_skills_side_panel() -> Control:
     title.add_theme_constant_override("outline_size", 5)
     v.add_child(title)
     var sub := Label.new()
-    sub.text = "Кожен рівень навика назавжди робить тебе трохи небезпечнішим."
+    sub.text = "Кожен щабель уміння назавжди робить тебе трохи грізнішим."
     sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     sub.add_theme_font_size_override("font_size", 14)
     sub.add_theme_color_override("font_color", Color(0.85, 0.78, 0.6))
@@ -2446,11 +2446,11 @@ func _refresh_skills() -> void:
             plus.icon = load("res://icons/ui_lock.png")
             plus.tooltip_text = "Закрито: %s" % _skill_lock_text(sid)
             coin.visible = false
-            price.text = "Закрито"
+            price.text = "Замкнено"
             price.add_theme_color_override("font_color", Color(0.65, 0.6, 0.55))
         elif lvl >= mx:
             plus.icon = load("res://icons/ui_star.png")
-            plus.tooltip_text = "Максимальний рівень"
+            plus.tooltip_text = "Вершина майстерності"
             coin.visible = false
             price.text = "МАКС"
             price.add_theme_color_override("font_color", Color(0.6, 1.0, 0.6))
@@ -2458,7 +2458,7 @@ func _refresh_skills() -> void:
             var cost := Skills.cost(sid, lvl)
             plus_ok = GameState.coins >= cost
             plus.icon = load("res://icons/ui_plus.png" if lvl == 0 else "res://icons/ui_arrow_up.png")
-            plus.tooltip_text = "Купити" if lvl == 0 else "Прокачати"
+            plus.tooltip_text = "Здобути" if lvl == 0 else "Загартувати"
             coin.visible = true
             price.text = str(cost)
             price.add_theme_color_override("font_color", Color(1.0, 0.88, 0.4) if plus_ok else Color(0.95, 0.45, 0.38))
@@ -2540,7 +2540,7 @@ func _fill_skill_popup() -> void:
             tint = Color(0.28, 0.25, 0.22, 0.9)
         srow.add_child(_icon("res://icons/ui_star.png", 18.0, tint))
     var lvl_l := Label.new()
-    lvl_l.text = ("Рівень %d/%d" % [lvl, mx]) if lvl > 0 else "Ще не прокачано"
+    lvl_l.text = ("Рівень %d/%d" % [lvl, mx]) if lvl > 0 else "Ще не загартовано"
     lvl_l.add_theme_font_size_override("font_size", 15)
     lvl_l.add_theme_color_override("font_color", Color(0.85, 0.78, 0.6))
     tv.add_child(lvl_l)
@@ -2605,12 +2605,12 @@ func _fill_skill_popup() -> void:
         lb.disabled = true
         brow.add_child(lb)
     elif lvl >= mx:
-        var mb := _popup_button("Макс. рівень", "res://icons/ui_star.png")
+        var mb := _popup_button("Вершина", "res://icons/ui_star.png")
         mb.disabled = true
         brow.add_child(mb)
     else:
         var cost := Skills.cost(id, lvl)
-        var bb := _popup_button(("Купити (%d)" if lvl == 0 else "Прокачати (%d)") % cost, "res://icons/ui_coin.png" if lvl == 0 else "res://icons/ui_arrow_up.png")
+        var bb := _popup_button(("Здобути (%d)" if lvl == 0 else "Загартувати (%d)") % cost, "res://icons/ui_coin.png" if lvl == 0 else "res://icons/ui_arrow_up.png")
         bb.disabled = GameState.coins < cost
         bb.pressed.connect(_on_skill_buy.bind(id))
         brow.add_child(bb)
@@ -2622,7 +2622,7 @@ func _refresh_all() -> void:
     for l in Locations.DATA:
         if not bool(l.get("wip", false)):
             playable += 1
-    progress_label.text = "Прогрес: %d/%d" % [GameState.conquered.size(), playable]
+    progress_label.text = "Літопис: %d/%d" % [GameState.conquered.size(), playable]
     world_map.selected = sel_id
     world_map.refresh()
     _refresh_info()
