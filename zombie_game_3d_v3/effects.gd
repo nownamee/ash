@@ -62,6 +62,89 @@ static func damage_text(parent: Node, pos: Vector3, text: String, color: Color =
     tw.tween_property(l, "modulate:a", 0.0, 0.7)
     tw.chain().tween_callback(l.queue_free)
 
+static var _smoke_mesh: SphereMesh
+static var _spark_mesh: BoxMesh
+
+# Клуби диму/пилу: сіра напівпрозора куля, що росте й тане.
+static func smoke(parent: Node, pos: Vector3, color: Color, amount: int = 6, size: float = 0.35, rise: float = 1.2) -> void:
+    if _smoke_mesh == null:
+        _smoke_mesh = SphereMesh.new()
+        _smoke_mesh.radius = 1.0
+        _smoke_mesh.height = 2.0
+        _smoke_mesh.radial_segments = 8
+        _smoke_mesh.rings = 4
+        var m := StandardMaterial3D.new()
+        m.vertex_color_use_as_albedo = true
+        m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+        m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+        _smoke_mesh.material = m
+    var p := CPUParticles3D.new()
+    p.mesh = _smoke_mesh
+    p.amount = amount
+    p.lifetime = 0.9
+    p.one_shot = true
+    p.explosiveness = 0.9
+    p.direction = Vector3.UP
+    p.spread = 70.0
+    p.initial_velocity_min = rise * 0.4
+    p.initial_velocity_max = rise
+    p.gravity = Vector3(0.0, 0.4, 0.0)
+    p.damping_min = 1.0
+    p.damping_max = 2.0
+    p.scale_amount_min = size * 0.7
+    p.scale_amount_max = size * 1.2
+    var sc := Curve.new()
+    sc.add_point(Vector2(0.0, 0.4))
+    sc.add_point(Vector2(1.0, 1.6))
+    p.scale_amount_curve = sc
+    var g := Gradient.new()
+    g.set_color(0, Color(color.r, color.g, color.b, 0.55))
+    g.set_color(1, Color(color.r, color.g, color.b, 0.0))
+    p.color_ramp = g
+    p.position = pos
+    p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+    parent.add_child(p)
+    p.emitting = true
+    parent.get_tree().create_timer(1.4).timeout.connect(p.queue_free)
+
+# Пилюка від кроків і приземлень.
+static func dust(parent: Node, pos: Vector3, amount: int = 4) -> void:
+    smoke(parent, pos + Vector3(0.0, 0.1, 0.0), Color(0.62, 0.56, 0.46), amount, 0.18, 0.7)
+
+# Іскри від удару: витягнуті яскраві риски, що летять у бік удару й гаснуть.
+static func hit_sparks(parent: Node, pos: Vector3, dir: Vector3, color: Color = Color(1.0, 0.85, 0.4), amount: int = 8) -> void:
+    if _spark_mesh == null:
+        _spark_mesh = BoxMesh.new()
+        _spark_mesh.size = Vector3(0.03, 0.03, 0.22)
+        var m := StandardMaterial3D.new()
+        m.vertex_color_use_as_albedo = true
+        m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+        _spark_mesh.material = m
+    var p := CPUParticles3D.new()
+    p.mesh = _spark_mesh
+    p.amount = amount
+    p.lifetime = 0.35
+    p.one_shot = true
+    p.explosiveness = 1.0
+    var d := dir
+    d.y = maxf(d.y, 0.3)
+    p.direction = d.normalized()
+    p.spread = 50.0
+    p.initial_velocity_min = 4.0
+    p.initial_velocity_max = 9.0
+    p.gravity = Vector3(0.0, -12.0, 0.0)
+    p.particle_flag_align_y = false
+    p.color = color
+    var g := Gradient.new()
+    g.set_color(0, Color(1.0, 1.0, 0.9, 1.0))
+    g.set_color(1, Color(color.r, color.g * 0.5, color.b * 0.3, 0.0))
+    p.color_ramp = g
+    p.position = pos
+    p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+    parent.add_child(p)
+    p.emitting = true
+    parent.get_tree().create_timer(0.8).timeout.connect(p.queue_free)
+
 static func explosion(parent: Node, pos: Vector3, radius: float, color: Color) -> void:
     var mi := MeshInstance3D.new()
     var s := SphereMesh.new()
@@ -83,6 +166,40 @@ static func explosion(parent: Node, pos: Vector3, radius: float, color: Color) -
     tw.tween_property(m, "albedo_color:a", 0.0, 0.25)
     tw.chain().tween_callback(mi.queue_free)
     burst(parent, pos + Vector3(0.0, 0.3, 0.0), color, 14, 6.0, 0.12)
+    # вибухова хвиля по землі, спалах світла, дим і іскри
+    var ring := MeshInstance3D.new()
+    var tm := TorusMesh.new()
+    tm.inner_radius = 0.92
+    tm.outer_radius = 1.0
+    tm.rings = 24
+    tm.ring_segments = 4
+    ring.mesh = tm
+    var rm := StandardMaterial3D.new()
+    rm.albedo_color = Color(color.r, color.g, color.b, 0.7)
+    rm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+    rm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+    ring.material_override = rm
+    ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+    ring.position = Vector3(pos.x, 0.12, pos.z)
+    ring.scale = Vector3(0.3, 0.3, 0.3)
+    parent.add_child(ring)
+    var rt := ring.create_tween()
+    rt.set_parallel(true)
+    rt.tween_property(ring, "scale", Vector3(radius, 0.3, radius) * 1.15, 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+    rt.tween_property(rm, "albedo_color:a", 0.0, 0.35)
+    rt.chain().tween_callback(ring.queue_free)
+    var fl := OmniLight3D.new()
+    fl.light_color = color.lerp(Color(1.0, 0.8, 0.5), 0.5)
+    fl.light_energy = 3.5
+    fl.omni_range = radius * 2.5 + 3.0
+    fl.shadow_enabled = false
+    fl.position = pos + Vector3(0.0, 1.0, 0.0)
+    parent.add_child(fl)
+    var ft := fl.create_tween()
+    ft.tween_property(fl, "light_energy", 0.0, 0.3)
+    ft.tween_callback(fl.queue_free)
+    smoke(parent, pos + Vector3(0.0, 0.4, 0.0), Color(0.22, 0.2, 0.2), 6, 0.35 + radius * 0.12, 1.6)
+    hit_sparks(parent, pos + Vector3(0.0, 0.4, 0.0), Vector3.UP, color.lerp(Color(1.0, 0.85, 0.4), 0.5), 10)
 
 static func bolt(parent: Node, a: Vector3, b: Vector3, color: Color) -> void:
     var dist := a.distance_to(b)

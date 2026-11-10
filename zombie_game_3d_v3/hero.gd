@@ -107,9 +107,9 @@ func _limb(parent: Node3D, length: float, r_top: float, r_bot: float, color: Col
 
 func _build() -> void:
     var skin := Color(0.90, 0.73, 0.58)
-    var jacket := Color(0.23, 0.27, 0.21)
-    var jacket_dark := Color(0.16, 0.19, 0.15)
-    var pants := Color(0.17, 0.18, 0.22)
+    var jacket := Color(0.30, 0.35, 0.24)
+    var jacket_dark := Color(0.2, 0.24, 0.16)
+    var pants := Color(0.22, 0.24, 0.31)
     var boot := Color(0.11, 0.09, 0.08)
     var glove := Color(0.10, 0.10, 0.11)
     var hair := Color(0.17, 0.10, 0.06)
@@ -149,6 +149,18 @@ func _build() -> void:
     Util.add_mesh(spine, Util.box(Vector3(0.34, 0.40, 0.16)), pack, Vector3(0, 0.36, 0.22), Vector3.ZERO, 0.9)
     Util.add_mesh(spine, Util.box(Vector3(0.26, 0.14, 0.06)), pack_dark, Vector3(0, 0.30, 0.32), Vector3.ZERO, 0.9)
     Util.add_mesh(spine, _cyl(0.07, 0.07, 0.38), pack_dark, Vector3(0, 0.60, 0.24), Vector3(0, 0, 90), 0.9)
+    # додаткові деталі: ремені спальника, бокова фляга, комір куртки, поділ куртки з складками
+    for bx in [-0.1, 0.1]:
+        Util.add_mesh(spine, _cyl(0.076, 0.076, 0.03), belt, Vector3(bx, 0.60, 0.24), Vector3(0, 0, 90), 0.7)
+    Util.add_mesh(spine, _cyl(0.07, 0.07, 0.2), Color(0.25, 0.3, 0.38), Vector3(0.22, 0.28, 0.24), Vector3.ZERO, 0.4)       # фляга
+    Util.add_mesh(spine, _cyl(0.04, 0.05, 0.04), Color(0.7, 0.7, 0.72), Vector3(0.22, 0.4, 0.24), Vector3.ZERO, 0.3)
+    Util.add_mesh(spine, Util.box(Vector3(0.30, 0.08, 0.20)), pack, Vector3(0, 0.56, 0.22), Vector3.ZERO, 0.9)             # клапан рюкзака
+    var collar := Util.add_mesh(spine, _cyl(0.17, 0.2, 0.1), jacket_dark, Vector3(0, 0.6, 0.0), Vector3.ZERO, 0.9)   # комір
+    collar.scale = Vector3(1.0, 1.0, 0.85)
+    for fx in [-0.18, 0.0, 0.18]:
+        Util.add_mesh(hips, Util.box(Vector3(0.14, 0.14, 0.03)), jacket, Vector3(fx, 0.08, -0.14), Vector3(8, 0, 0), 0.9)    # поділ куртки
+    Util.add_mesh(hips, Util.box(Vector3(0.40, 0.14, 0.03)), jacket_dark, Vector3(0, 0.08, 0.14), Vector3(-8, 0, 0), 0.9)
+    Util.add_mesh(hips, Util.box(Vector3(0.12, 0.16, 0.08)), pack_dark, Vector3(-0.22, -0.07, -0.03), Vector3.ZERO, 0.8)      # кобура/підсумок
     if body_t > 0:
         var bc: Color = Armor.PLATE_COLORS[body_t]
         _magmify(Util.add_mesh(spine, Util.box(Vector3(0.54, 0.40, 0.06)), bc, Vector3(0, 0.40, -0.17), Vector3.ZERO, 0.35), body_t, 1.0)
@@ -214,6 +226,12 @@ func _build() -> void:
     Util.add_mesh(head, _cyl(0.19, 0.19, 0.04), red, Vector3(0, 0.07, 0.0), Vector3.ZERO, 0.8)
     Util.add_mesh(head, Util.box(Vector3(0.05, 0.03, 0.10)), red, Vector3(0.04, 0.05, 0.22), Vector3(0, 20, 0), 0.8)
     Util.add_mesh(head, Util.box(Vector3(0.05, 0.03, 0.10)), red, Vector3(-0.04, 0.03, 0.22), Vector3(0, -20, 0), 0.8)
+    # обличчя й зачіска: ніс, брови, вуха, пасмо з-під пов'язки
+    Util.add_mesh(head, Util.box(Vector3(0.14, 0.02, 0.03)), Color(0.12, 0.07, 0.04), Vector3(0, 0.045, -0.165), Vector3.ZERO, 0.9)
+    Util.add_mesh(head, _ball(0.03), Color(0.85, 0.68, 0.54), Vector3(-0.172, 0.0, 0.0), Vector3.ZERO, 0.8)
+    Util.add_mesh(head, _ball(0.03), Color(0.85, 0.68, 0.54), Vector3(0.172, 0.0, 0.0), Vector3.ZERO, 0.8)
+    var tail := Util.add_mesh(head, Util.box(Vector3(0.14, 0.2, 0.06)), hair, Vector3(0, -0.03, 0.18), Vector3(-12, 0, 0), 0.9)
+    tail.name = "HairTail"
     if head_t > 0:
         var hc: Color = Armor.PLATE_COLORS[head_t]
         var helm := Util.add_mesh(head, _ball(0.215), hc, Vector3(0, 0.06, 0.01), Vector3.ZERO, 0.35)
